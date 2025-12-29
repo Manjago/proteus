@@ -1,0 +1,150 @@
+package io.github.manjago.proteus.core;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static io.github.manjago.proteus.core.OpCode.*;
+
+class OpCodeTest {
+
+    @Test
+    @DisplayName("NOP encodes to correct value")
+    void nopEncodesToZeroInHighByte() {
+        int instruction = encode(NOP);
+        assertEquals(0x00_000000, instruction);
+    }
+
+    @Test
+    @DisplayName("MOV R1, R2 encodes correctly")
+    void movEncodesRegisters() {
+        // MOV R3, R5 -> opcode=0x01, r1=3, r2=5
+        int instruction = encode(MOV, 3, 5);
+
+        assertEquals(MOV, decodeOpCode(instruction));
+        assertEquals(3, decodeR1(instruction));
+        assertEquals(5, decodeR2(instruction));
+    }
+
+    @Test
+    @DisplayName("SEARCH uses all 4 registers")
+    void searchEncodesFourRegisters() {
+        // SEARCH Rs=0, Rt=1, Rl=2, Rf=7
+        int instruction = encode(SEARCH, 0, 1, 2, 7);
+
+        assertEquals(SEARCH, decodeOpCode(instruction));
+        assertEquals(0, decodeR1(instruction));
+        assertEquals(1, decodeR2(instruction));
+        assertEquals(2, decodeR3(instruction));
+        assertEquals(7, decodeR4(instruction));
+    }
+
+    @Test
+    @DisplayName("Register values wrap at 3 bits (0-7)")
+    void registerValuesWrapAt3Bits() {
+        // R1 = 8 should become 0 (8 & 0x07 = 0)
+        int instruction = encode(INC, 8);
+        assertEquals(0, decodeR1(instruction));
+
+        // R1 = 15 should become 7 (15 & 0x07 = 7)
+        instruction = encode(INC, 15);
+        assertEquals(7, decodeR1(instruction));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OpCode.class)
+    @DisplayName("All opcodes can be encoded and decoded")
+    void allOpCodesRoundTrip(OpCode op) {
+        int instruction = encode(op, 1, 2, 3, 4);
+        assertEquals(op, decodeOpCode(instruction));
+    }
+
+    @Test
+    @DisplayName("fromCode returns null for unknown opcodes")
+    void fromCodeReturnsNullForUnknown() {
+        assertNull(fromCode(0xFF)); // not defined
+        assertNull(fromCode(0x02)); // gap between NOP and ADD
+        assertNull(fromCode(-1));   // negative
+        assertNull(fromCode(256));  // out of range
+    }
+
+    @Test
+    @DisplayName("fromCode returns correct OpCode for all defined codes")
+    void fromCodeReturnsCorrectOpCode() {
+        assertEquals(NOP, fromCode(0x00));
+        assertEquals(MOV, fromCode(0x01));
+        assertEquals(ADD, fromCode(0x10));
+        assertEquals(SUB, fromCode(0x11));
+        assertEquals(INC, fromCode(0x12));
+        assertEquals(DEC, fromCode(0x13));
+        assertEquals(LOAD, fromCode(0x20));
+        assertEquals(STORE, fromCode(0x21));
+        assertEquals(JMP, fromCode(0x30));
+        assertEquals(JMPZ, fromCode(0x31));
+        assertEquals(JMPN, fromCode(0x32));
+        assertEquals(COPY, fromCode(0x40));
+        assertEquals(ALLOCATE, fromCode(0x41));
+        assertEquals(SPAWN, fromCode(0x42));
+        assertEquals(SEARCH, fromCode(0x50));
+    }
+
+    @Test
+    @DisplayName("Operand counts are correct")
+    void operandCountsAreCorrect() {
+        assertEquals(0, NOP.getOperandCount());
+        assertEquals(2, MOV.getOperandCount());
+        assertEquals(2, ADD.getOperandCount());
+        assertEquals(1, INC.getOperandCount());
+        assertEquals(1, DEC.getOperandCount());
+        assertEquals(2, LOAD.getOperandCount());
+        assertEquals(2, STORE.getOperandCount());
+        assertEquals(1, JMP.getOperandCount());
+        assertEquals(2, JMPZ.getOperandCount());
+        assertEquals(2, JMPN.getOperandCount());
+        assertEquals(2, COPY.getOperandCount());
+        assertEquals(2, ALLOCATE.getOperandCount());
+        assertEquals(2, SPAWN.getOperandCount());
+        assertEquals(4, SEARCH.getOperandCount());
+    }
+
+    @Test
+    @DisplayName("Mnemonics match enum names")
+    void mnemonicsMatchEnumNames() {
+        for (OpCode op : OpCode.values()) {
+            assertEquals(op.name(), op.getMnemonic());
+        }
+    }
+
+    @Test
+    @DisplayName("Bit layout is correct: opcode in high byte")
+    void bitLayoutOpCodeInHighByte() {
+        // ADD has code 0x10
+        int instruction = encode(ADD, 0, 0, 0, 0);
+        // Should be 0x10 in bits 31-24
+        assertEquals(0x10_000000, instruction);
+    }
+
+    @Test
+    @DisplayName("Bit layout is correct: registers in correct positions")
+    void bitLayoutRegistersInCorrectPositions() {
+        // All registers set to 7 (0b111)
+        int instruction = encode(NOP, 7, 7, 7, 7);
+
+        // Expected: 0x00_EFF000
+        // R1 (bits 23-21): 111 -> shifted to position 21
+        // R2 (bits 20-18): 111 -> shifted to position 18
+        // R3 (bits 17-15): 111 -> shifted to position 15
+        // R4 (bits 14-12): 111 -> shifted to position 12
+
+        assertEquals(7, decodeR1(instruction));
+        assertEquals(7, decodeR2(instruction));
+        assertEquals(7, decodeR3(instruction));
+        assertEquals(7, decodeR4(instruction));
+
+        // Binary: 0000_0000_1110_1111_1111_0000_0000_0000
+        // Hex:    0x00EFF000
+        assertEquals(0x00EFF000, instruction);
+    }
+}
