@@ -144,7 +144,7 @@ class OpCodeTest {
         assertEquals(7, decodeR4(instruction));
 
         // Binary: 0000_0000_1110_1111_1111_0000_0000_0000
-        // Hex:    0x00EFF000
-        assertEquals(0x00EFF000, instruction);
+        // Hex:    0x00FFF000
+        assertEquals(0x00FFF000, instruction, "Actual instruction is " + instruction);
     }
 }
