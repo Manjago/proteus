@@ -2,7 +2,7 @@ package io.github.manjago.proteus.core;
 
 /**
  * Adam - the first self-replicating organism.
- * <p>
+ * 
  * This is the "ancestor" from which all other organisms will evolve.
  * Adam's genome contains the minimal code needed to:
  * 1. Calculate its own size
@@ -10,7 +10,7 @@ package io.github.manjago.proteus.core;
  * 3. Copy itself to the new location
  * 4. Spawn the offspring
  * 5. Repeat forever
- * <p>
+ * 
  * Register conventions:
  * - R0: source pointer (for copy loop)
  * - R1: destination pointer (for copy loop)
@@ -27,7 +27,7 @@ public final class Adam {
     
     /**
      * Build Adam's genome.
-     * <p>
+     * 
      * Adam is designed to be loaded at address 0.
      * The genome builds its own size constant using arithmetic.
      */
@@ -330,15 +330,11 @@ public final class Adam {
         
         b.spawn(3, 4);      // 21: Spawn child
         
-        b.jmp(6);           // 22: Jump to start (R6 = 0)
+        b.sub(0, 0);        // 22: Reset R0 = 0 for next replication cycle
         
-        // WAIT - that's 23 instructions (0-22), not 24!
-        // R4 = 24 but genome is 23. Off by one.
+        b.jmp(6);           // 23: Jump to start (R6 = 0)
         
-        // Add a NOP at the end to make it 24:
-        b.nop();            // 23: NOP (padding)
-        
-        // Now: 24 instructions [0-23], SIZE=24 ✓, COPY_LOOP=16 ✓
+        // SIZE = 24, COPY_LOOP = 16 - constants unchanged!
         
         return b.build();
     }
