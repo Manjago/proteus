@@ -25,7 +25,7 @@ class AdamTest {
     @DisplayName("Adam genome has expected size")
     void adamHasExpectedSize() {
         int[] genome = Adam.genome();
-        assertEquals(24, genome.length, "Adam should be 24 instructions");
+        assertEquals(32, genome.length, "Adam should be 32 instructions");
     }
     
     @Test
@@ -52,13 +52,13 @@ class AdamTest {
         int[] genome = Adam.genome();
         loadGenome(genome, 0);
         
-        // Execute until ALLOCATE (instruction 13)
+        // Execute until ALLOCATE (instruction 17)
         VirtualCPU cpu = new VirtualCPU(0.0);
-        for (int i = 0; i < 13; i++) {
+        for (int i = 0; i < 17; i++) {
             cpu.execute(state, memory);
         }
         
-        assertEquals(24, state.getRegister(4), "R4 should contain SIZE=24");
+        assertEquals(32, state.getRegister(4), "R4 should contain SIZE=32");
     }
     
     @Test
@@ -67,13 +67,13 @@ class AdamTest {
         int[] genome = Adam.genome();
         loadGenome(genome, 0);
         
-        // Execute until ALLOCATE (instruction 13)
+        // Execute until ALLOCATE (instruction 17)
         VirtualCPU cpu = new VirtualCPU(0.0);
-        for (int i = 0; i < 13; i++) {
+        for (int i = 0; i < 17; i++) {
             cpu.execute(state, memory);
         }
         
-        assertEquals(16, state.getRegister(5), "R5 should contain COPY_LOOP=16");
+        assertEquals(21, state.getRegister(5), "R5 should contain COPY_LOOP=21");
     }
     
     @Test
@@ -90,14 +90,14 @@ class AdamTest {
         SystemCallHandler handler = new SystemCallHandler() {
             @Override
             public int allocate(int requestedSize) {
-                assertEquals(24, requestedSize, "Should request 24 cells");
+                assertEquals(32, requestedSize, "Should request 32 cells");
                 return childAddr;
             }
             
             @Override
             public boolean spawn(int address, int spawnSize, CpuState parentState) {
                 assertEquals(childAddr, address, "Should spawn at allocated address");
-                assertEquals(24, spawnSize, "Should spawn with size 24");
+                assertEquals(32, spawnSize, "Should spawn with size 32");
                 spawnCalled.set(true);
                 return true;
             }
@@ -105,11 +105,9 @@ class AdamTest {
         
         VirtualCPU cpu = new VirtualCPU(0.0, new Random(), handler);
         
-        // Execute until SPAWN completes (instruction 21)
-        // Need to run through: init (0-12), allocate (13), setup (14-15), 
-        // copy loop (16-20) * 24 iterations, spawn (21)
-        int maxCycles = 500;
-        while (state.getIp() <= 21 && maxCycles-- > 0) {
+        // Execute until SPAWN completes (instruction 26)
+        int maxCycles = 700;
+        while (state.getIp() <= 26 && maxCycles-- > 0) {
             cpu.execute(state, memory);
         }
         
@@ -172,9 +170,9 @@ class AdamTest {
         // Use failing handler
         VirtualCPU cpu = new VirtualCPU(0.0);
         
-        // Execute through ALLOCATE
+        // Execute through ALLOCATE (instruction 17)
         int maxCycles = 50;
-        while (state.getIp() < 14 && maxCycles-- > 0) {
+        while (state.getIp() < 18 && maxCycles-- > 0) {
             cpu.execute(state, memory);
         }
         
@@ -183,7 +181,7 @@ class AdamTest {
         
         // Program continues (doesn't crash)
         cpu.execute(state, memory);
-        assertTrue(state.getIp() > 14, "Should continue after failed allocate");
+        assertTrue(state.getIp() > 18, "Should continue after failed allocate");
     }
     
     @Test
@@ -206,21 +204,21 @@ class AdamTest {
         
         VirtualCPU cpu = new VirtualCPU(0.0, new Random(), handler);
         
-        // Run until we reach SPAWN (addr 21)
+        // Run until we reach SPAWN (addr 26)
         int copyIterations = 0;
-        int maxCycles = 500;
+        int maxCycles = 700;
         
-        while (state.getIp() != 21 && maxCycles-- > 0) {
+        while (state.getIp() != 26 && maxCycles-- > 0) {
             int ipBefore = state.getIp();
             cpu.execute(state, memory);
             
-            // Count how many times we execute the COPY instruction at addr 16
-            if (ipBefore == 16) {
+            // Count how many times we execute the COPY instruction at addr 21
+            if (ipBefore == 21) {
                 copyIterations++;
             }
         }
         
-        assertEquals(24, copyIterations, "Should iterate 24 times (once per instruction)");
+        assertEquals(32, copyIterations, "Should iterate 32 times (once per instruction)");
     }
     
     // ========== Helper Methods ==========

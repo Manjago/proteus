@@ -298,6 +298,23 @@ public final class Adam {
         // Hmm that's 23. Let me recount...
         
         // Okay, let's just build it instruction by instruction and be done:
+        // 
+        // New layout with full register reset:
+        // [0-5]:   Build R4 = 32
+        // [6-9]:   Build R7 = 8  
+        // [10]:    SUB R4, R7 -> R4 = 24
+        // [11-13]: INC R4 x3 -> R4 = 27 (new SIZE)
+        // [14-15]: ADD R5, R7 x2 -> R5 = 16
+        // [16-17]: INC R5 x2 -> R5 = 18 (new COPY_LOOP addr)
+        // [18]:    ALLOCATE
+        // [19-20]: MOV setup
+        // [21-25]: Copy loop (5 instructions) at addr 21
+        // [26]:    SPAWN
+        // [27-30]: Reset R0, R4, R5, R7
+        // [31]:    JMP
+        // Total: 32 instructions... need to adjust again!
+        //
+        // Let's just iterate until it converges:
         
         b.inc(4);           // 0: R4 = 1
         b.add(4, 4);        // 1: R4 = 2
@@ -311,30 +328,46 @@ public final class Adam {
         b.add(7, 7);        // 8: R7 = 4
         b.add(7, 7);        // 9: R7 = 8
         
-        b.sub(4, 7);        // 10: R4 = 32 - 8 = 24  <- SIZE
+        // R4 = 32, need SIZE = 32
+        // So no subtraction needed! R4 is already correct.
         
-        b.add(5, 7);        // 11: R5 = 0 + 8 = 8
-        b.add(5, 7);        // 12: R5 = 8 + 8 = 16   <- COPY_LOOP will be at 16
+        // R5 = COPY_LOOP address = 21
+        // Build: 8 + 8 = 16, then +5 = 21
+        b.add(5, 7);        // 10: R5 = 0 + 8 = 8
+        b.add(5, 7);        // 11: R5 = 8 + 8 = 16
+        b.inc(5);           // 12: R5 = 17
+        b.inc(5);           // 13: R5 = 18
+        b.inc(5);           // 14: R5 = 19
+        b.inc(5);           // 15: R5 = 20
+        b.inc(5);           // 16: R5 = 21
         
-        b.allocate(4, 3);   // 13: Allocate, child addr in R3
+        b.allocate(4, 3);   // 17: Allocate, child addr in R3
         
-        b.mov(1, 3);        // 14: R1 = child addr (dest ptr)
-        b.mov(2, 4);        // 15: R2 = size (counter)
+        b.mov(1, 3);        // 18: R1 = child addr (dest ptr)
+        b.mov(2, 4);        // 19: R2 = size (counter)
         
-        // copy_loop: (address 16)
-        b.copy(0, 1);       // 16: memory[R1] = memory[R0]
-        b.inc(0);           // 17: R0++
-        b.inc(1);           // 18: R1++
-        b.dec(2);           // 19: R2--
-        b.jmpn(2, 5);       // 20: if R2 != 0, jump to R5 (16)
+        // copy_loop: (address 20... wait, that's not 21!)
+        // Let me add one more instruction before copy loop
+        b.nop();            // 20: padding to align copy_loop to 21
         
-        b.spawn(3, 4);      // 21: Spawn child
+        // copy_loop: (address 21)
+        b.copy(0, 1);       // 21: memory[R1] = memory[R0]
+        b.inc(0);           // 22: R0++
+        b.inc(1);           // 23: R1++
+        b.dec(2);           // 24: R2--
+        b.jmpn(2, 5);       // 25: if R2 != 0, jump to R5 (21)
         
-        b.sub(0, 0);        // 22: Reset R0 = 0 for next replication cycle
+        b.spawn(3, 4);      // 26: Spawn child
         
-        b.jmp(6);           // 23: Jump to start (R6 = 0)
+        // --- Reset for next cycle ---
+        b.sub(0, 0);        // 27: R0 = 0
+        b.sub(4, 4);        // 28: R4 = 0
+        b.sub(5, 5);        // 29: R5 = 0
+        b.sub(7, 7);        // 30: R7 = 0
         
-        // SIZE = 24, COPY_LOOP = 16 - constants unchanged!
+        b.jmp(6);           // 31: Jump to start (R6 = 0)
+        
+        // SIZE = 32, COPY_LOOP = 21 ✓
         
         return b.build();
     }
