@@ -35,8 +35,7 @@ public class Organism {
         this.size = size;
         this.parentId = parentId;
         this.birthCycle = birthCycle;
-        this.state = new CpuState();
-        this.state.setIp(startAddr);
+        this.state = new CpuState(startAddr);  // IP starts at organism's code
     }
     
     // ========== Getters ==========

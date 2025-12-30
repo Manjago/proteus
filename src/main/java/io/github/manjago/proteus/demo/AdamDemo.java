@@ -8,10 +8,14 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
- * Demo: Watch Adam replicate!
+ * Demo: Watch Adam replicate with proper memory management!
  * 
- * This is a simple demonstration of the first self-replicating organism.
- * Run this to see Adam copy itself in the "primordial soup".
+ * This demonstration shows:
+ * - Self-replicating organisms (starting with Adam)
+ * - Memory allocation via FreeListMemoryManager
+ * - Population control via AgeBasedReaper
+ * - Mutations during replication
+ * - Evolution over time
  */
 public class AdamDemo {
     
@@ -22,16 +26,18 @@ public class AdamDemo {
     // The "soup" - shared memory
     private final AtomicIntegerArray soup;
     
-    // All living organisms
-    private final List<Organism> organisms = new ArrayList<>();
+    // Memory management
+    private final MemoryManager memoryManager;
+    private final Reaper reaper;
     
-    // Memory allocation pointer (simple bump allocator)
-    private int nextFreeAddress;
+    // All organisms (alive and dead)
+    private final List<Organism> organisms = new ArrayList<>();
     
     // Statistics
     private long totalCycles = 0;
     private int totalSpawns = 0;
     private int failedAllocations = 0;
+    private int deathsByErrors = 0;
     
     // CPU with configurable mutation rate
     private final VirtualCPU cpu;
@@ -39,36 +45,10 @@ public class AdamDemo {
     
     public AdamDemo(double mutationRate) {
         this.soup = new AtomicIntegerArray(SOUP_SIZE);
+        this.memoryManager = new FreeListMemoryManager(SOUP_SIZE);
+        this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationRate = mutationRate;
         this.cpu = new VirtualCPU(mutationRate, new Random(), createHandler());
-    }
-    
-    /**
-     * Simple organism record.
-     */
-    static class Organism {
-        final int id;
-        final int startAddr;
-        final int size;
-        final CpuState state;
-        final int parentId;
-        final long birthCycle;
-        boolean alive = true;
-        
-        Organism(int id, int startAddr, int size, int parentId, long birthCycle) {
-            this.id = id;
-            this.startAddr = startAddr;
-            this.size = size;
-            this.state = new CpuState(startAddr);
-            this.parentId = parentId;
-            this.birthCycle = birthCycle;
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("Organism#%d[addr=%d, size=%d, parent=%d]", 
-                id, startAddr, size, parentId);
-        }
     }
     
     private SystemCallHandler createHandler() {
@@ -79,13 +59,22 @@ public class AdamDemo {
                     return -1; // Sanity check
                 }
                 
-                int addr = nextFreeAddress;
-                if (addr + requestedSize > SOUP_SIZE) {
-                    failedAllocations++;
-                    return -1; // Out of memory
+                // Try to allocate
+                int addr = memoryManager.allocate(requestedSize);
+                
+                if (addr == -1) {
+                    // No space - try reaping
+                    int killed = reaper.reapUntilFree(requestedSize);
+                    if (killed > 0) {
+                        // Retry allocation
+                        addr = memoryManager.allocate(requestedSize);
+                    }
                 }
                 
-                nextFreeAddress += requestedSize;
+                if (addr == -1) {
+                    failedAllocations++;
+                }
+                
                 return addr;
             }
             
@@ -95,15 +84,11 @@ public class AdamDemo {
                     return false; // Invalid address
                 }
                 
-                if (organisms.size() >= MAX_ORGANISMS) {
-                    return false; // Population limit
-                }
-                
                 // Find parent
                 int parentId = -1;
                 for (Organism o : organisms) {
-                    if (o.state == parentState) {
-                        parentId = o.id;
+                    if (o.getState() == parentState) {
+                        parentId = o.getId();
                         break;
                     }
                 }
@@ -116,6 +101,7 @@ public class AdamDemo {
                     totalCycles
                 );
                 organisms.add(child);
+                reaper.register(child);
                 totalSpawns++;
                 
                 System.out.printf("  🐣 SPAWN! %s (cycle %d)%n", child, totalCycles);
@@ -130,13 +116,21 @@ public class AdamDemo {
      */
     public void seedAdam() {
         int[] genome = Adam.genome();
+        
+        // Allocate space for Adam
+        int addr = memoryManager.allocate(genome.length);
+        if (addr != 0) {
+            throw new IllegalStateException("Adam should be at address 0, got: " + addr);
+        }
+        
+        // Load genome into soup
         for (int i = 0; i < genome.length; i++) {
             soup.set(i, genome[i]);
         }
         
         Organism adam = new Organism(0, 0, genome.length, -1, 0);
         organisms.add(adam);
-        nextFreeAddress = genome.length;
+        reaper.register(adam);
         
         System.out.println("🌱 Adam loaded at address 0");
         System.out.println("   Size: " + genome.length + " instructions");
@@ -161,14 +155,13 @@ public class AdamDemo {
             // Use index-based loop to avoid ConcurrentModificationException
             for (int i = 0; i < organisms.size(); i++) {
                 Organism org = organisms.get(i);
-                if (!org.alive) continue;
+                if (!org.isAlive()) continue;
                 
-                ExecutionResult result = cpu.execute(org.state, soup);
+                cpu.execute(org.getState(), soup);
                 
                 // Kill organisms that error too much
-                if (org.state.getErrors() > 100) {
-                    org.alive = false;
-                    System.out.printf("  💀 %s died (too many errors)%n", org);
+                if (org.getState().getErrors() > 100) {
+                    killOrganism(org, "too many errors");
                 }
             }
             
@@ -185,10 +178,22 @@ public class AdamDemo {
         printFinalReport(elapsed);
     }
     
+    /**
+     * Kill an organism and free its memory.
+     */
+    private void killOrganism(Organism org, String reason) {
+        org.kill();
+        reaper.unregister(org);
+        memoryManager.free(org.getStartAddr(), org.getSize());
+        deathsByErrors++;
+        System.out.printf("  💀 %s died (%s)%n", org, reason);
+    }
+    
     private void printProgress() {
-        long alive = organisms.stream().filter(o -> o.alive).count();
-        System.out.printf("   Cycle %,d: %d organisms alive, %d total spawns%n",
-            totalCycles, alive, totalSpawns);
+        long alive = organisms.stream().filter(Organism::isAlive).count();
+        int reaped = reaper.getReapCount();
+        System.out.printf("   Cycle %,d: %d alive, %d spawns, %d reaped, %d errors%n",
+            totalCycles, alive, totalSpawns, reaped, deathsByErrors);
     }
     
     private void printFinalReport(long elapsedMs) {
@@ -198,66 +203,127 @@ public class AdamDemo {
         System.out.println("═══════════════════════════════════════");
         System.out.printf("Total cycles:        %,d%n", totalCycles);
         System.out.printf("Total spawns:        %d%n", totalSpawns);
+        System.out.printf("Deaths by errors:    %d%n", deathsByErrors);
+        System.out.printf("Reaped (by age):     %d%n", reaper.getReapCount());
         System.out.printf("Failed allocations:  %d%n", failedAllocations);
-        System.out.printf("Memory used:         %,d / %,d cells%n", nextFreeAddress, SOUP_SIZE);
+        System.out.println();
+        
+        // Memory stats
+        System.out.println("MEMORY:");
+        System.out.printf("  Used:          %,d / %,d cells (%.1f%%)%n", 
+            memoryManager.getUsedMemory(), SOUP_SIZE,
+            100.0 * memoryManager.getUsedMemory() / SOUP_SIZE);
+        System.out.printf("  Free:          %,d cells%n", memoryManager.getFreeMemory());
+        System.out.printf("  Largest block: %,d cells%n", memoryManager.getLargestFreeBlock());
+        System.out.printf("  Fragmentation: %.1f%%%n", memoryManager.getFragmentation() * 100);
+        System.out.printf("  Free blocks:   %d%n", memoryManager.getFreeBlockCount());
+        System.out.println();
+        
+        // Reaper stats
+        if (reaper instanceof AgeBasedReaper abr) {
+            System.out.println("REAPER:");
+            System.out.printf("  Total reaped:  %d%n", abr.getReapCount());
+            System.out.printf("  Avg age@death: %.0f cycles%n", abr.getAverageAgeAtDeath());
+            System.out.printf("  Queue size:    %d%n", abr.getQueueSize());
+            System.out.printf("  Oldest alive:  %d cycles%n", abr.getOldestAge());
+            System.out.println();
+        }
+        
         System.out.printf("Time elapsed:        %,d ms%n", elapsedMs);
         System.out.printf("Speed:               %,.0f cycles/sec%n", 
             totalCycles * 1000.0 / Math.max(1, elapsedMs));
         System.out.println();
         
-        System.out.println("ORGANISMS:");
-        long alive = 0;
-        for (Organism org : organisms) {
-            String status = org.alive ? "✓" : "✗";
-            System.out.printf("  %s #%d: addr=%d, size=%d, parent=%d, age=%d%n",
-                status, org.id, org.startAddr, org.size, 
-                org.parentId, org.state.getAge());
-            if (org.alive) alive++;
-        }
-        System.out.println();
-        System.out.printf("Alive: %d / %d%n", alive, organisms.size());
+        // Organism summary
+        long alive = organisms.stream().filter(Organism::isAlive).count();
+        System.out.printf("ORGANISMS: %d alive / %d total%n", alive, organisms.size());
         
-        // Show genome diversity (compare first vs last valid organism)
-        if (organisms.size() >= 2) {
-            System.out.println();
-            System.out.println("GENOME COMPARISON (first vs last valid):");
-            Organism first = organisms.get(0);
-            Organism last = null;
-            
-            // Find last organism with valid address
-            for (int i = organisms.size() - 1; i >= 0; i--) {
-                if (organisms.get(i).startAddr >= 0) {
-                    last = organisms.get(i);
-                    break;
-                }
-            }
-            
-            if (last == null || last == first) {
-                System.out.println("  No valid organisms to compare");
-            } else {
-                int differences = 0;
-                int compareLen = Math.min(first.size, last.size);
-                for (int i = 0; i < compareLen; i++) {
-                    if (soup.get(first.startAddr + i) != soup.get(last.startAddr + i)) {
-                        differences++;
-                    }
-                }
-                
-                System.out.printf("  Comparing #%d (addr=%d) vs #%d (addr=%d)%n",
-                    first.id, first.startAddr, last.id, last.startAddr);
-                
-                if (first.size != last.size) {
-                    System.out.printf("  Size changed: %d → %d%n", first.size, last.size);
-                }
-                System.out.printf("  Instruction differences: %d / %d%n", differences, compareLen);
-                
-                if (differences > 0) {
-                    System.out.println("  🧬 EVOLUTION DETECTED!");
-                }
+        // Show first 20 and last 10
+        int showFirst = Math.min(20, organisms.size());
+        for (int i = 0; i < showFirst; i++) {
+            printOrganismLine(organisms.get(i));
+        }
+        
+        if (organisms.size() > 30) {
+            System.out.println("  ... (" + (organisms.size() - 30) + " more) ...");
+        }
+        
+        if (organisms.size() > 20) {
+            int showLast = Math.min(10, organisms.size() - 20);
+            for (int i = organisms.size() - showLast; i < organisms.size(); i++) {
+                printOrganismLine(organisms.get(i));
             }
         }
+        
+        // Evolution detection
+        printEvolutionAnalysis();
         
         System.out.println("═══════════════════════════════════════");
+    }
+    
+    private void printOrganismLine(Organism org) {
+        String status = org.isAlive() ? "✓" : "✗";
+        System.out.printf("  %s #%d: addr=%d, size=%d, parent=%d, age=%d%n",
+            status, org.getId(), org.getStartAddr(), org.getSize(), 
+            org.getParentId(), org.getAge());
+    }
+    
+    private void printEvolutionAnalysis() {
+        // Find first and last ALIVE organisms
+        Organism first = null;
+        Organism last = null;
+        
+        for (Organism o : organisms) {
+            if (o.isAlive()) {
+                if (first == null) first = o;
+                last = o;
+            }
+        }
+        
+        if (first == null || first == last) {
+            System.out.println("\nNo evolution analysis available.");
+            return;
+        }
+        
+        System.out.println("\nEVOLUTION ANALYSIS:");
+        System.out.printf("  Comparing #%d (addr=%d) vs #%d (addr=%d)%n",
+            first.getId(), first.getStartAddr(), last.getId(), last.getStartAddr());
+        
+        if (first.getSize() != last.getSize()) {
+            System.out.printf("  Size changed: %d → %d%n", first.getSize(), last.getSize());
+        }
+        
+        int differences = 0;
+        int compareLen = Math.min(first.getSize(), last.getSize());
+        for (int i = 0; i < compareLen; i++) {
+            if (soup.get(first.getStartAddr() + i) != soup.get(last.getStartAddr() + i)) {
+                differences++;
+            }
+        }
+        
+        System.out.printf("  Instruction differences: %d / %d%n", differences, compareLen);
+        
+        if (differences > 0) {
+            System.out.println("  🧬 EVOLUTION DETECTED!");
+        }
+        
+        // Generation depth
+        int maxGen = 0;
+        for (Organism o : organisms) {
+            int gen = getGeneration(o);
+            if (gen > maxGen) maxGen = gen;
+        }
+        System.out.printf("  Max generation depth: %d%n", maxGen);
+    }
+    
+    private int getGeneration(Organism org) {
+        int gen = 0;
+        int parentId = org.getParentId();
+        while (parentId >= 0 && parentId < organisms.size()) {
+            gen++;
+            parentId = organisms.get(parentId).getParentId();
+        }
+        return gen;
     }
     
     /**
@@ -280,7 +346,7 @@ public class AdamDemo {
         System.out.println();
         System.out.println("╔═══════════════════════════════════════╗");
         System.out.println("║     PROTEUS: Artificial Life Demo     ║");
-        System.out.println("║         🧬 Adam Replication 🧬         ║");
+        System.out.println("║      🧬 With Memory Management 🧬      ║");
         System.out.println("╚═══════════════════════════════════════╝");
         System.out.println();
         
@@ -297,11 +363,16 @@ public class AdamDemo {
         demo.seedAdam();
         demo.run(cycles);
         
-        // Show final state of Adam and first child
-        if (demo.organisms.size() >= 2) {
-            System.out.println();
-            demo.dumpMemory(0, 13); // Adam
-            demo.dumpMemory(demo.organisms.get(1).startAddr, 13); // First child
+        // Show some memory dumps
+        System.out.println();
+        demo.dumpMemory(0, 13); // Original Adam location
+        
+        // Find a living organism to show
+        for (Organism org : demo.organisms) {
+            if (org.isAlive() && org.getStartAddr() > 0) {
+                demo.dumpMemory(org.getStartAddr(), org.getSize());
+                break;
+            }
         }
     }
 }
