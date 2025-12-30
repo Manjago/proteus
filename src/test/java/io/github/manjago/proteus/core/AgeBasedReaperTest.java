@@ -1,0 +1,324 @@
+package io.github.manjago.proteus.core;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class AgeBasedReaperTest {
+    
+    private FreeListMemoryManager memoryManager;
+    private AgeBasedReaper reaper;
+    
+    private static final int SOUP_SIZE = 1000;
+    private static final int ORGANISM_SIZE = 13;
+    
+    @BeforeEach
+    void setUp() {
+        memoryManager = new FreeListMemoryManager(SOUP_SIZE);
+        reaper = new AgeBasedReaper(memoryManager);
+    }
+    
+    /**
+     * Helper to create an organism and allocate its memory.
+     */
+    private Organism createOrganism(int id, int parentId, long birthCycle) {
+        int addr = memoryManager.allocate(ORGANISM_SIZE);
+        assertNotEquals(-1, addr, "Should be able to allocate");
+        return new Organism(id, addr, ORGANISM_SIZE, parentId, birthCycle);
+    }
+    
+    // ========== Registration ==========
+    
+    @Nested
+    @DisplayName("Registration")
+    class Registration {
+        
+        @Test
+        @DisplayName("Register adds organism to queue")
+        void registerAddsToQueue() {
+            Organism org = createOrganism(0, -1, 0);
+            reaper.register(org);
+            
+            assertEquals(1, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("Register multiple organisms")
+        void registerMultiple() {
+            for (int i = 0; i < 10; i++) {
+                Organism org = createOrganism(i, -1, i * 10);
+                reaper.register(org);
+            }
+            
+            assertEquals(10, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("Register null is ignored")
+        void registerNullIgnored() {
+            reaper.register(null);
+            assertEquals(0, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("Unregister removes from queue")
+        void unregisterRemoves() {
+            Organism org = createOrganism(0, -1, 0);
+            reaper.register(org);
+            reaper.unregister(org);
+            
+            assertEquals(0, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("Unregister non-existent is safe")
+        void unregisterNonExistent() {
+            Organism org = createOrganism(0, -1, 0);
+            // Don't register, just unregister
+            reaper.unregister(org);
+            
+            assertEquals(0, reaper.getQueueSize());
+        }
+    }
+    
+    // ========== Reaping ==========
+    
+    @Nested
+    @DisplayName("Reaping")
+    class Reaping {
+        
+        @Test
+        @DisplayName("Reap kills oldest organism")
+        void reapKillsOldest() {
+            Organism old = createOrganism(0, -1, 100);
+            Organism young = createOrganism(1, 0, 200);
+            
+            reaper.register(old);
+            reaper.register(young);
+            
+            Organism victim = reaper.reap();
+            
+            assertEquals(old, victim);
+            assertFalse(old.isAlive());
+            assertTrue(young.isAlive());
+        }
+        
+        @Test
+        @DisplayName("Reap frees memory")
+        void reapFreesMemory() {
+            Organism org = createOrganism(0, -1, 0);
+            int freeBefore = memoryManager.getFreeMemory();
+            
+            reaper.register(org);
+            reaper.reap();
+            
+            int freeAfter = memoryManager.getFreeMemory();
+            assertEquals(freeBefore + ORGANISM_SIZE, freeAfter);
+        }
+        
+        @Test
+        @DisplayName("Reap increments counter")
+        void reapIncrementsCounter() {
+            Organism org = createOrganism(0, -1, 0);
+            reaper.register(org);
+            
+            assertEquals(0, reaper.getReapCount());
+            reaper.reap();
+            assertEquals(1, reaper.getReapCount());
+        }
+        
+        @Test
+        @DisplayName("Reap empty queue returns null")
+        void reapEmptyReturnsNull() {
+            Organism victim = reaper.reap();
+            assertNull(victim);
+        }
+        
+        @Test
+        @DisplayName("Reap skips already dead organisms")
+        void reapSkipsDead() {
+            Organism dead = createOrganism(0, -1, 100);
+            Organism alive = createOrganism(1, 0, 200);
+            
+            dead.kill(); // Kill before registering (died from errors)
+            
+            reaper.register(dead);
+            reaper.register(alive);
+            
+            Organism victim = reaper.reap();
+            
+            assertEquals(alive, victim); // Should reap the alive one
+            assertEquals(1, reaper.getReapCount());
+        }
+        
+        @Test
+        @DisplayName("Reap order is by birth cycle (FIFO)")
+        void reapOrderIsFifo() {
+            Organism org1 = createOrganism(1, -1, 100);
+            Organism org2 = createOrganism(2, -1, 50);  // Born earlier
+            Organism org3 = createOrganism(3, -1, 150);
+            
+            reaper.register(org1);
+            reaper.register(org2);
+            reaper.register(org3);
+            
+            // Should reap in order: org2 (50), org1 (100), org3 (150)
+            assertEquals(org2, reaper.reap());
+            assertEquals(org1, reaper.reap());
+            assertEquals(org3, reaper.reap());
+        }
+    }
+    
+    // ========== ReapUntilFree ==========
+    
+    @Nested
+    @DisplayName("ReapUntilFree")
+    class ReapUntilFreeTests {
+        
+        @Test
+        @DisplayName("ReapUntilFree kills enough to allocate")
+        void reapUntilFreeKillsEnough() {
+            // Fill memory almost completely: 76 organisms × 13 = 988 cells
+            // Leaves only 12 free cells
+            for (int i = 0; i < 76; i++) {
+                Organism org = createOrganism(i, -1, i);
+                reaper.register(org);
+            }
+            
+            // Only 12 cells free, need 100
+            assertEquals(SOUP_SIZE - 76 * ORGANISM_SIZE, memoryManager.getFreeMemory());
+            
+            // Try to allocate more than available
+            int addr = memoryManager.allocate(100);
+            assertEquals(-1, addr); // Should fail
+            
+            // Reap until we can allocate 100 (need to kill at least 8 organisms)
+            int killed = reaper.reapUntilFree(100);
+            
+            assertTrue(killed >= 8, "Should kill at least 8 organisms to free 100+ cells");
+            assertTrue(memoryManager.getLargestFreeBlock() >= 100);
+            
+            // Now allocation should succeed
+            addr = memoryManager.allocate(100);
+            assertNotEquals(-1, addr);
+        }
+        
+        @Test
+        @DisplayName("ReapUntilFree returns 0 if already enough space")
+        void reapUntilFreeNoActionIfEnough() {
+            Organism org = createOrganism(0, -1, 0);
+            reaper.register(org);
+            
+            // Plenty of space available
+            int killed = reaper.reapUntilFree(10);
+            
+            assertEquals(0, killed);
+            assertTrue(org.isAlive());
+        }
+        
+        @Test
+        @DisplayName("ReapUntilFree handles fragmentation")
+        void reapUntilFreeHandlesFragmentation() {
+            // Use organism size 10 so 1000 divides evenly into 100 organisms
+            final int ORG_SIZE = 10;
+            
+            // Create 100 organisms that fill memory exactly
+            Organism[] orgs = new Organism[100];
+            for (int i = 0; i < 100; i++) {
+                int addr = memoryManager.allocate(ORG_SIZE);
+                assertNotEquals(-1, addr, "Should allocate organism " + i);
+                orgs[i] = new Organism(i, addr, ORG_SIZE, -1, i);
+                reaper.register(orgs[i]);
+            }
+            
+            // Memory is full
+            assertEquals(0, memoryManager.getFreeMemory());
+            
+            // Kill odd indices: creates 50 free blocks of 10 cells each
+            // Each separated by an alive organism (even indices)
+            for (int i = 1; i < 100; i += 2) {
+                orgs[i].kill();
+                reaper.unregister(orgs[i]);
+                memoryManager.free(orgs[i].getStartAddr(), orgs[i].getSize());
+            }
+            
+            // Now: 50 alive orgs, 50 free blocks of 10 cells = 500 free
+            // Largest block = 10 (no merging because separated by alive orgs)
+            assertEquals(500, memoryManager.getFreeMemory());
+            assertEquals(10, memoryManager.getLargestFreeBlock(), 
+                         "Largest block should be 10 (fragmented)");
+            
+            // Request 25 cells - impossible without killing contiguous organisms
+            int addr = memoryManager.allocate(25);
+            assertEquals(-1, addr, "Should fail - no block >= 25");
+            
+            // Reap until we can allocate 25
+            int killed = reaper.reapUntilFree(25);
+            
+            assertTrue(killed >= 2, "Should kill at least 2 adjacent organisms");
+            assertTrue(memoryManager.getLargestFreeBlock() >= 25,
+                       "Should have freed enough contiguous memory");
+            
+            // Now allocation should succeed
+            addr = memoryManager.allocate(25);
+            assertNotEquals(-1, addr, "Should be able to allocate after reaping");
+        }
+    }
+    
+    // ========== Statistics ==========
+    
+    @Nested
+    @DisplayName("Statistics")
+    class Statistics {
+        
+        @Test
+        @DisplayName("GetOldestAge returns max age of alive organisms")
+        void getOldestAgeReturnsMax() {
+            Organism org1 = createOrganism(1, -1, 0);
+            Organism org2 = createOrganism(2, -1, 100);
+            
+            // Simulate some aging
+            for (int i = 0; i < 500; i++) org1.getState().incrementAge();
+            for (int i = 0; i < 300; i++) org2.getState().incrementAge();
+            
+            reaper.register(org1);
+            reaper.register(org2);
+            
+            assertEquals(500, reaper.getOldestAge());
+        }
+        
+        @Test
+        @DisplayName("GetAverageAgeAtDeath tracks correctly")
+        void getAverageAgeAtDeathTracks() {
+            Organism org1 = createOrganism(1, -1, 0);
+            Organism org2 = createOrganism(2, -1, 100);
+            
+            // Age them differently
+            for (int i = 0; i < 100; i++) org1.getState().incrementAge();
+            for (int i = 0; i < 200; i++) org2.getState().incrementAge();
+            
+            reaper.register(org1);
+            reaper.register(org2);
+            
+            reaper.reap(); // Kill org1 (age 100)
+            reaper.reap(); // Kill org2 (age 200)
+            
+            assertEquals(150.0, reaper.getAverageAgeAtDeath(), 0.001);
+        }
+        
+        @Test
+        @DisplayName("ToString provides useful info")
+        void toStringProvidesInfo() {
+            Organism org = createOrganism(0, -1, 0);
+            reaper.register(org);
+            
+            String str = reaper.toString();
+            
+            assertTrue(str.contains("reaped=0"));
+            assertTrue(str.contains("queueSize=1"));
+        }
+    }
+}
