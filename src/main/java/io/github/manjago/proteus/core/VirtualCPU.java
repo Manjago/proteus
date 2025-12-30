@@ -27,6 +27,9 @@ public final class VirtualCPU {
     /** Handler for system calls (ALLOCATE, SPAWN) */
     private final SystemCallHandler syscallHandler;
     
+    /** Optional mutation tracker for recording mutations */
+    private MutationTracker mutationTracker;
+    
     /**
      * Create VirtualCPU with default settings.
      * Mutation rate: 0.1% (0.001)
@@ -224,12 +227,18 @@ public final class VirtualCPU {
             return ExecutionResult.ERROR_MEMORY_OUT_OF_BOUNDS;
         }
         
-        int value = memory.get(srcAddr);
+        int originalValue = memory.get(srcAddr);
+        int value = originalValue;
         
         // MUTATION happens here!
         if (random.nextDouble() < mutationRate) {
             value = mutate(value);
             log.debug("Mutation at copy from {} to {}: value mutated", srcAddr, dstAddr);
+            
+            // Record mutation if tracker is set
+            if (mutationTracker != null) {
+                mutationTracker.record(srcAddr, dstAddr, originalValue, value);
+            }
         }
         
         memory.set(dstAddr, value);
@@ -341,5 +350,21 @@ public final class VirtualCPU {
     
     public double getMutationRate() {
         return mutationRate;
+    }
+    
+    /**
+     * Set mutation tracker for recording mutations.
+     * 
+     * @param tracker the tracker to use, or null to disable tracking
+     */
+    public void setMutationTracker(MutationTracker tracker) {
+        this.mutationTracker = tracker;
+    }
+    
+    /**
+     * Get the current mutation tracker.
+     */
+    public MutationTracker getMutationTracker() {
+        return mutationTracker;
     }
 }

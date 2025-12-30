@@ -43,12 +43,17 @@ public class AdamDemo {
     private final VirtualCPU cpu;
     private final double mutationRate;
     
+    // Mutation tracking
+    private final MutationTracker mutationTracker;
+    
     public AdamDemo(double mutationRate) {
         this.soup = new AtomicIntegerArray(SOUP_SIZE);
         this.memoryManager = new FreeListMemoryManager(SOUP_SIZE);
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationRate = mutationRate;
+        this.mutationTracker = new MutationTracker();
         this.cpu = new VirtualCPU(mutationRate, new Random(), createHandler());
+        this.cpu.setMutationTracker(mutationTracker);
     }
     
     private SystemCallHandler createHandler() {
@@ -150,6 +155,7 @@ public class AdamDemo {
         
         for (int cycle = 0; cycle < maxCycles; cycle++) {
             totalCycles++;
+            mutationTracker.setCycle(totalCycles);
             
             // Round-robin: each organism gets one instruction per cycle
             // Use index-based loop to avoid ConcurrentModificationException
@@ -314,6 +320,44 @@ public class AdamDemo {
             if (gen > maxGen) maxGen = gen;
         }
         System.out.printf("  Max generation depth: %d%n", maxGen);
+        
+        // Survived mutations
+        printSurvivedMutations();
+    }
+    
+    private void printSurvivedMutations() {
+        List<MutationRecord> survived = mutationTracker.getUniqueSurvivedMutations(organisms);
+        
+        System.out.println();
+        System.out.printf("SURVIVED MUTATIONS: %d (of %d total)%n", 
+                survived.size(), mutationTracker.size());
+        
+        if (survived.isEmpty()) {
+            System.out.println("  (none)");
+            return;
+        }
+        
+        // Group by organism
+        for (MutationRecord m : survived) {
+            // Find which organism this mutation is in
+            Organism owner = null;
+            for (Organism org : organisms) {
+                if (org.isAlive() && m.affectsRange(org.getStartAddr(), org.getSize())) {
+                    owner = org;
+                    break;
+                }
+            }
+            
+            if (owner != null) {
+                int offset = m.offsetFrom(owner.getStartAddr());
+                String originalAsm = Disassembler.disassembleInstruction(m.originalValue());
+                String mutatedAsm = Disassembler.disassembleInstruction(m.mutatedValue());
+                
+                System.out.printf("  Org#%d[%d] offset %d: %s → %s%n",
+                        owner.getId(), owner.getStartAddr(), offset,
+                        originalAsm, mutatedAsm);
+            }
+        }
     }
     
     private int getGeneration(Organism org) {

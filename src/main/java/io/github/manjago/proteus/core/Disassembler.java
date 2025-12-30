@@ -67,6 +67,14 @@ public final class Disassembler {
     }
     
     /**
+     * Alias for disassemble(int) - disassemble a single instruction.
+     * More explicit name for clarity when called from other code.
+     */
+    public static String disassembleInstruction(int instruction) {
+        return disassemble(instruction);
+    }
+    
+    /**
      * Disassemble an array of instructions with addresses.
      * 
      * @param code array of encoded instructions
