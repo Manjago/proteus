@@ -22,7 +22,7 @@ class OpCodeTest {
     void movEncodesRegisters() {
         // MOV R3, R5 -> opcode=0x01, r1=3, r2=5
         int instruction = encode(MOV, 3, 5);
-
+        
         assertEquals(MOV, decodeOpCode(instruction));
         assertEquals(3, decodeR1(instruction));
         assertEquals(5, decodeR2(instruction));
@@ -33,7 +33,7 @@ class OpCodeTest {
     void searchEncodesFourRegisters() {
         // SEARCH Rs=0, Rt=1, Rl=2, Rf=7
         int instruction = encode(SEARCH, 0, 1, 2, 7);
-
+        
         assertEquals(SEARCH, decodeOpCode(instruction));
         assertEquals(0, decodeR1(instruction));
         assertEquals(1, decodeR2(instruction));
@@ -47,7 +47,7 @@ class OpCodeTest {
         // R1 = 8 should become 0 (8 & 0x07 = 0)
         int instruction = encode(INC, 8);
         assertEquals(0, decodeR1(instruction));
-
+        
         // R1 = 15 should become 7 (15 & 0x07 = 7)
         instruction = encode(INC, 15);
         assertEquals(7, decodeR1(instruction));
@@ -65,7 +65,7 @@ class OpCodeTest {
     @DisplayName("fromCode returns null for unknown opcodes")
     void fromCodeReturnsNullForUnknown() {
         assertNull(fromCode(0xFF)); // not defined
-        assertNull(fromCode(0x02)); // gap between NOP and ADD
+        assertNull(fromCode(0x03)); // gap between MOVI and ADD
         assertNull(fromCode(-1));   // negative
         assertNull(fromCode(256));  // out of range
     }
@@ -75,6 +75,7 @@ class OpCodeTest {
     void fromCodeReturnsCorrectOpCode() {
         assertEquals(NOP, fromCode(0x00));
         assertEquals(MOV, fromCode(0x01));
+        assertEquals(MOVI, fromCode(0x02));
         assertEquals(ADD, fromCode(0x10));
         assertEquals(SUB, fromCode(0x11));
         assertEquals(INC, fromCode(0x12));
@@ -131,20 +132,62 @@ class OpCodeTest {
     void bitLayoutRegistersInCorrectPositions() {
         // All registers set to 7 (0b111)
         int instruction = encode(NOP, 7, 7, 7, 7);
-
+        
         // Expected: 0x00_EFF000
         // R1 (bits 23-21): 111 -> shifted to position 21
-        // R2 (bits 20-18): 111 -> shifted to position 18
+        // R2 (bits 20-18): 111 -> shifted to position 18  
         // R3 (bits 17-15): 111 -> shifted to position 15
         // R4 (bits 14-12): 111 -> shifted to position 12
-
+        
         assertEquals(7, decodeR1(instruction));
         assertEquals(7, decodeR2(instruction));
         assertEquals(7, decodeR3(instruction));
         assertEquals(7, decodeR4(instruction));
-
-        // Binary: 0000_0000_1110_1111_1111_0000_0000_0000
+        
+        // Binary: 0000_0000_1111_1111_1111_0000_0000_0000
         // Hex:    0x00FFF000
-        assertEquals(0x00FFF000, instruction, "Actual instruction is " + instruction);
+        assertEquals(0x00FFF000, instruction);
+    }
+    
+    // ========== MOVI Tests ==========
+    
+    @Test
+    @DisplayName("MOVI encodes and decodes immediate correctly")
+    void moviEncodesImmediate() {
+        int instruction = encodeImm(MOVI, 3, 12345);
+        
+        assertEquals(MOVI, decodeOpCode(instruction));
+        assertEquals(3, decodeR1(instruction));
+        assertEquals(12345, decodeImmediate(instruction));
+    }
+    
+    @Test
+    @DisplayName("MOVI can encode maximum 21-bit immediate (2,097,151)")
+    void moviMaxImmediate() {
+        int maxImm = 0x1FFFFF; // 2,097,151
+        int instruction = encodeImm(MOVI, 0, maxImm);
+        
+        assertEquals(maxImm, decodeImmediate(instruction));
+    }
+    
+    @Test
+    @DisplayName("MOVI immediate wraps at 21 bits")
+    void moviImmediateWraps() {
+        // 0x200000 = 2,097,152 should wrap to 0
+        int instruction = encodeImm(MOVI, 0, 0x200000);
+        assertEquals(0, decodeImmediate(instruction));
+        
+        // 0x200001 should wrap to 1
+        instruction = encodeImm(MOVI, 0, 0x200001);
+        assertEquals(1, decodeImmediate(instruction));
+    }
+    
+    @Test
+    @DisplayName("MOVI encodes register correctly")
+    void moviEncodesRegister() {
+        for (int r = 0; r < 8; r++) {
+            int instruction = encodeImm(MOVI, r, 100);
+            assertEquals(r, decodeR1(instruction));
+        }
     }
 }

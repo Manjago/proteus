@@ -54,6 +54,29 @@ class VirtualCPUTest {
             assertEquals(42, state.getRegister(0));
             assertEquals(42, state.getRegister(1)); // Source unchanged
         }
+        
+        @Test
+        @DisplayName("MOVI loads immediate value into register")
+        void moviLoadsImmediate() {
+            memory.set(0, encodeImm(MOVI, 4, 12345));
+            
+            ExecutionResult result = cpu.execute(state, memory);
+            
+            assertEquals(OK, result);
+            assertEquals(12345, state.getRegister(4));
+            assertEquals(1, state.getIp());
+        }
+        
+        @Test
+        @DisplayName("MOVI can load maximum 21-bit value")
+        void moviLoadsMaxValue() {
+            int maxValue = 0x1FFFFF; // 2,097,151
+            memory.set(0, encodeImm(MOVI, 0, maxValue));
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(maxValue, state.getRegister(0));
+        }
     }
     
     // ========== Arithmetic Instructions ==========

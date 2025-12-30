@@ -1,6 +1,5 @@
 package io.github.manjago.proteus.core;
 
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +10,7 @@ import static io.github.manjago.proteus.core.OpCode.*;
 
 /**
  * Virtual CPU interpreter for Proteus ISA v1.0
- * <p>
+ * 
  * Executes instructions from shared memory ("soup").
  * Each organism has its own CpuState but shares the memory.
  */
@@ -59,7 +58,7 @@ public final class VirtualCPU {
      * @param memory shared memory ("soup")
      * @return execution result
      */
-    public ExecutionResult execute(@NotNull CpuState state, AtomicIntegerArray memory) {
+    public ExecutionResult execute(CpuState state, AtomicIntegerArray memory) {
         int ip = state.getIp();
         
         // Bounds check for IP
@@ -83,13 +82,13 @@ public final class VirtualCPU {
         int r3 = decodeR3(instruction);
         int r4 = decodeR4(instruction);
         
-        ExecutionResult result = executeOp(op, r1, r2, r3, r4, state, memory);
+        ExecutionResult result = executeOp(op, instruction, r1, r2, r3, r4, state, memory);
         
         state.incrementAge();
         return result;
     }
     
-    private ExecutionResult executeOp(@NotNull OpCode op, int r1, int r2, int r3, int r4,
+    private ExecutionResult executeOp(OpCode op, int instruction, int r1, int r2, int r3, int r4,
                                        CpuState state, AtomicIntegerArray memory) {
         switch (op) {
             case NOP -> {
@@ -99,6 +98,13 @@ public final class VirtualCPU {
             
             case MOV -> {
                 state.setRegister(r1, state.getRegister(r2));
+                state.advanceIp();
+                return ExecutionResult.OK;
+            }
+            
+            case MOVI -> {
+                int immediate = decodeImmediate(instruction);
+                state.setRegister(r1, immediate);
                 state.advanceIp();
                 return ExecutionResult.OK;
             }
@@ -206,7 +212,7 @@ public final class VirtualCPU {
      * COPY instruction - copies one memory cell with possible mutation.
      * memory[R_dst] = memory[R_src] (possibly mutated)
      */
-    private ExecutionResult executeCopy(int r1, int r2, @NotNull CpuState state, AtomicIntegerArray memory) {
+    private ExecutionResult executeCopy(int r1, int r2, CpuState state, AtomicIntegerArray memory) {
         int srcAddr = state.getRegister(r1);
         int dstAddr = state.getRegister(r2);
         
@@ -244,7 +250,7 @@ public final class VirtualCPU {
      * ALLOCATE instruction - request memory for offspring.
      * R_size = requested size, R_addr = result address (or -1 on failure)
      */
-    private ExecutionResult executeAllocate(int r1, int r2, @NotNull CpuState state) {
+    private ExecutionResult executeAllocate(int r1, int r2, CpuState state) {
         int requestedSize = state.getRegister(r1);
         int allocatedAddr = syscallHandler.allocate(requestedSize);
         state.setRegister(r2, allocatedAddr);
@@ -260,7 +266,7 @@ public final class VirtualCPU {
      * SPAWN instruction - create offspring organism.
      * R_addr = start address, R_size = genome size
      */
-    private ExecutionResult executeSpawn(int r1, int r2, @NotNull CpuState state) {
+    private ExecutionResult executeSpawn(int r1, int r2, CpuState state) {
         int addr = state.getRegister(r1);
         int size = state.getRegister(r2);
         
@@ -282,7 +288,7 @@ public final class VirtualCPU {
      * Rf (r4) = result (found address, or -1 if not found)
      */
     private ExecutionResult executeSearch(int r1, int r2, int r3, int r4,
-                                          @NotNull CpuState state, AtomicIntegerArray memory) {
+                                          CpuState state, AtomicIntegerArray memory) {
         int searchStart = state.getRegister(r1);
         int templateAddr = state.getRegister(r2);
         int templateLen = state.getRegister(r3);

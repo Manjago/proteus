@@ -48,6 +48,16 @@ public final class GenomeBuilder {
         return this;
     }
     
+    /**
+     * MOVI - load immediate value into register.
+     * @param dst destination register (0-7)
+     * @param immediate 21-bit unsigned value (0 to 2,097,151)
+     */
+    public GenomeBuilder movi(int dst, int immediate) {
+        instructions.add(encodeImm(MOVI, dst, immediate));
+        return this;
+    }
+    
     // ========== Arithmetic ==========
     
     public GenomeBuilder add(int a, int b) {

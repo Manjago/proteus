@@ -300,8 +300,8 @@ public class AdamDemo {
         // Show final state of Adam and first child
         if (demo.organisms.size() >= 2) {
             System.out.println();
-            demo.dumpMemory(0, 32); // Adam
-            demo.dumpMemory(demo.organisms.get(1).startAddr, 32); // First child
+            demo.dumpMemory(0, 13); // Adam
+            demo.dumpMemory(demo.organisms.get(1).startAddr, 13); // First child
         }
     }
 }

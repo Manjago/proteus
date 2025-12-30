@@ -25,7 +25,7 @@ class AdamTest {
     @DisplayName("Adam genome has expected size")
     void adamHasExpectedSize() {
         int[] genome = Adam.genome();
-        assertEquals(32, genome.length, "Adam should be 32 instructions");
+        assertEquals(13, genome.length, "Adam should be 13 instructions");
     }
     
     @Test
@@ -52,13 +52,11 @@ class AdamTest {
         int[] genome = Adam.genome();
         loadGenome(genome, 0);
         
-        // Execute until ALLOCATE (instruction 17)
+        // Execute first instruction (MOVI R4, 13)
         VirtualCPU cpu = new VirtualCPU(0.0);
-        for (int i = 0; i < 17; i++) {
-            cpu.execute(state, memory);
-        }
+        cpu.execute(state, memory);
         
-        assertEquals(32, state.getRegister(4), "R4 should contain SIZE=32");
+        assertEquals(13, state.getRegister(4), "R4 should contain SIZE=13");
     }
     
     @Test
@@ -67,13 +65,12 @@ class AdamTest {
         int[] genome = Adam.genome();
         loadGenome(genome, 0);
         
-        // Execute until ALLOCATE (instruction 17)
+        // Execute first two instructions (MOVI R4, MOVI R5)
         VirtualCPU cpu = new VirtualCPU(0.0);
-        for (int i = 0; i < 17; i++) {
-            cpu.execute(state, memory);
-        }
+        cpu.execute(state, memory);
+        cpu.execute(state, memory);
         
-        assertEquals(21, state.getRegister(5), "R5 should contain COPY_LOOP=21");
+        assertEquals(5, state.getRegister(5), "R5 should contain COPY_LOOP=5");
     }
     
     @Test
@@ -90,14 +87,14 @@ class AdamTest {
         SystemCallHandler handler = new SystemCallHandler() {
             @Override
             public int allocate(int requestedSize) {
-                assertEquals(32, requestedSize, "Should request 32 cells");
+                assertEquals(13, requestedSize, "Should request 13 cells");
                 return childAddr;
             }
             
             @Override
             public boolean spawn(int address, int spawnSize, CpuState parentState) {
                 assertEquals(childAddr, address, "Should spawn at allocated address");
-                assertEquals(32, spawnSize, "Should spawn with size 32");
+                assertEquals(13, spawnSize, "Should spawn with size 13");
                 spawnCalled.set(true);
                 return true;
             }
@@ -105,9 +102,9 @@ class AdamTest {
         
         VirtualCPU cpu = new VirtualCPU(0.0, new Random(), handler);
         
-        // Execute until SPAWN completes (instruction 26)
-        int maxCycles = 700;
-        while (state.getIp() <= 26 && maxCycles-- > 0) {
+        // Execute until SPAWN completes (instruction 10)
+        int maxCycles = 200;
+        while (state.getIp() <= 10 && maxCycles-- > 0) {
             cpu.execute(state, memory);
         }
         
@@ -156,7 +153,7 @@ class AdamTest {
         
         // Should be back at IP=0 after completing one replication cycle
         assertEquals(0, state.getIp(), "Should loop back to start");
-        assertTrue(state.getAge() > 100, "Should have executed many instructions");
+        assertTrue(state.getAge() > 50, "Should have executed many instructions");
         
         System.out.println("Adam completed one full cycle in " + state.getAge() + " instructions");
     }
@@ -170,9 +167,8 @@ class AdamTest {
         // Use failing handler
         VirtualCPU cpu = new VirtualCPU(0.0);
         
-        // Execute through ALLOCATE (instruction 17)
-        int maxCycles = 50;
-        while (state.getIp() < 18 && maxCycles-- > 0) {
+        // Execute through ALLOCATE (instruction 2)
+        for (int i = 0; i < 3; i++) {
             cpu.execute(state, memory);
         }
         
@@ -181,7 +177,7 @@ class AdamTest {
         
         // Program continues (doesn't crash)
         cpu.execute(state, memory);
-        assertTrue(state.getIp() > 18, "Should continue after failed allocate");
+        assertTrue(state.getIp() > 3, "Should continue after failed allocate");
     }
     
     @Test
@@ -204,21 +200,21 @@ class AdamTest {
         
         VirtualCPU cpu = new VirtualCPU(0.0, new Random(), handler);
         
-        // Run until we reach SPAWN (addr 26)
+        // Run until we reach SPAWN (addr 10)
         int copyIterations = 0;
-        int maxCycles = 700;
+        int maxCycles = 200;
         
-        while (state.getIp() != 26 && maxCycles-- > 0) {
+        while (state.getIp() != 10 && maxCycles-- > 0) {
             int ipBefore = state.getIp();
             cpu.execute(state, memory);
             
-            // Count how many times we execute the COPY instruction at addr 21
-            if (ipBefore == 21) {
+            // Count how many times we execute the COPY instruction at addr 5
+            if (ipBefore == 5) {
                 copyIterations++;
             }
         }
         
-        assertEquals(32, copyIterations, "Should iterate 32 times (once per instruction)");
+        assertEquals(13, copyIterations, "Should iterate 13 times (once per instruction)");
     }
     
     // ========== Helper Methods ==========

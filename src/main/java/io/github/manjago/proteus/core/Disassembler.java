@@ -1,12 +1,10 @@
 package io.github.manjago.proteus.core;
 
-import org.jetbrains.annotations.NotNull;
-
 import static io.github.manjago.proteus.core.OpCode.*;
 
 /**
  * Disassembler for Proteus ISA v1.0
- * <p>
+ * 
  * Converts machine code (int[]) to human-readable assembly text.
  */
 public final class Disassembler {
@@ -21,21 +19,24 @@ public final class Disassembler {
      * @param instruction encoded 32-bit instruction
      * @return assembly string like "MOV R3, R5" or "NOP"
      */
-    public static @NotNull String disassemble(int instruction) {
-        final OpCode op = decodeOpCode(instruction);
+    public static String disassemble(int instruction) {
+        OpCode op = decodeOpCode(instruction);
         
         if (op == null) {
             return String.format("??? 0x%08X", instruction);
         }
         
-        final int r1 = decodeR1(instruction);
-        final int r2 = decodeR2(instruction);
-        final int r3 = decodeR3(instruction);
-        final int r4 = decodeR4(instruction);
+        int r1 = decodeR1(instruction);
+        int r2 = decodeR2(instruction);
+        int r3 = decodeR3(instruction);
+        int r4 = decodeR4(instruction);
         
         return switch (op) {
             // No operands
             case NOP -> "NOP";
+            
+            // 1 operand with immediate
+            case MOVI -> String.format("MOVI R%d, %d", r1, decodeImmediate(instruction));
             
             // 1 operand
             case INC -> String.format("INC R%d", r1);
@@ -71,7 +72,7 @@ public final class Disassembler {
      * @param code array of encoded instructions
      * @return multi-line assembly listing
      */
-    public static @NotNull String disassemble(int[] code) {
+    public static String disassemble(int[] code) {
         return disassemble(code, 0);
     }
     
@@ -82,7 +83,7 @@ public final class Disassembler {
      * @param baseAddress starting address for listing
      * @return multi-line assembly listing
      */
-    public static @NotNull String disassemble(int[] code, int baseAddress) {
+    public static String disassemble(int[] code, int baseAddress) {
         if (code == null || code.length == 0) {
             return "";
         }
@@ -104,7 +105,7 @@ public final class Disassembler {
      * @param baseAddress starting address for listing
      * @return multi-line assembly listing with hex dump
      */
-    public static @NotNull String disassembleWithHex(int[] code, int baseAddress) {
+    public static String disassembleWithHex(int[] code, int baseAddress) {
         if (code == null || code.length == 0) {
             return "";
         }
