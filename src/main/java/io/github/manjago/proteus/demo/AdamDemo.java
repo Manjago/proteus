@@ -326,19 +326,47 @@ public class AdamDemo {
     }
     
     private void printSurvivedMutations() {
-        List<MutationRecord> survived = mutationTracker.getUniqueSurvivedMutations(organisms);
+        List<MutationRecord> allMutations = mutationTracker.getAllMutations();
+        
+        // Filter to only mutations that are actually still present in memory
+        List<MutationRecord> survived = new ArrayList<>();
+        for (MutationRecord m : allMutations) {
+            // Check if the mutated value is still at that address
+            int currentValue = soup.get(m.destAddr());
+            if (currentValue == m.mutatedValue() && currentValue != m.originalValue()) {
+                // Check if this address belongs to a living organism
+                for (Organism org : organisms) {
+                    if (org.isAlive() && m.affectsRange(org.getStartAddr(), org.getSize())) {
+                        survived.add(m);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Deduplicate by destAddr (keep first occurrence)
+        List<MutationRecord> unique = survived.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        MutationRecord::destAddr,
+                        m -> m,
+                        (m1, m2) -> m1  // Keep first
+                ))
+                .values()
+                .stream()
+                .sorted((a, b) -> Integer.compare(a.destAddr(), b.destAddr()))
+                .toList();
         
         System.out.println();
-        System.out.printf("SURVIVED MUTATIONS: %d (of %d total)%n", 
-                survived.size(), mutationTracker.size());
+        System.out.printf("SURVIVED MUTATIONS: %d (of %d total mutations)%n", 
+                unique.size(), mutationTracker.size());
         
-        if (survived.isEmpty()) {
-            System.out.println("  (none)");
+        if (unique.isEmpty()) {
+            System.out.println("  (none - all mutations were overwritten or in dead organisms)");
             return;
         }
         
-        // Group by organism
-        for (MutationRecord m : survived) {
+        // Show each mutation with context
+        for (MutationRecord m : unique) {
             // Find which organism this mutation is in
             Organism owner = null;
             for (Organism org : organisms) {
@@ -353,9 +381,16 @@ public class AdamDemo {
                 String originalAsm = Disassembler.disassembleInstruction(m.originalValue());
                 String mutatedAsm = Disassembler.disassembleInstruction(m.mutatedValue());
                 
-                System.out.printf("  Org#%d[%d] offset %d: %s → %s%n",
-                        owner.getId(), owner.getStartAddr(), offset,
-                        originalAsm, mutatedAsm);
+                // Check if disassembly looks the same (mutation in unused bits)
+                String note = "";
+                if (originalAsm.equals(mutatedAsm)) {
+                    note = " [silent: unused bits]";
+                }
+                
+                System.out.printf("  Org#%d[%d] offset %d (cycle %d):%n",
+                        owner.getId(), owner.getStartAddr(), offset, m.cycle());
+                System.out.printf("    0x%08X %s%n", m.originalValue(), originalAsm);
+                System.out.printf("    0x%08X %s%s%n", m.mutatedValue(), mutatedAsm, note);
             }
         }
     }
