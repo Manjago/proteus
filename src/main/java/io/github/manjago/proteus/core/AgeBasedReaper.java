@@ -51,12 +51,10 @@ public class AgeBasedReaper implements Reaper {
     
     @Override
     public void unregister(Organism organism) {
-        if (organism == null) {
-            return;
-        }
-        boolean removed = queue.remove(organism);
-        if (removed) {
-            log.debug("Unregistered {} (queue size: {})", organism.toShortString(), queue.size());
+        // Lazy deletion: don't remove from queue, just skip dead organisms in reap()
+        // PriorityQueue.remove() is O(n), which kills performance with millions of organisms
+        if (organism != null) {
+            log.trace("Unregistered {} (lazy - will skip in reap)", organism.toShortString());
         }
     }
     
