@@ -76,6 +76,7 @@ public class Defragmenter {
         aliveOrganisms.sort(Comparator.comparingInt(Organism::getStartAddr));
         
         int movedCount = 0;
+        int skippedCount = 0;
         int nextFreeAddr = 0;
         int soupSize = memoryManager.getTotalMemory();
         
@@ -87,14 +88,17 @@ public class Defragmenter {
             if (size <= 0 || size > 1000 || oldAddr < 0 || oldAddr + size > soupSize) {
                 log.warn("Skipping invalid organism in defrag: id={}, addr={}, size={}", 
                         org.getId(), oldAddr, size);
+                skippedCount++;
                 continue;
             }
             
-            // Safety: ensure we don't overflow
+            // Skip if organism doesn't fit in remaining space
+            // (leave it in place - imperfect compaction but safe)
             if (nextFreeAddr + size > soupSize) {
-                log.error("Defragmentation overflow! nextFreeAddr={}, size={}, soupSize={}", 
-                        nextFreeAddr, size, soupSize);
-                break;
+                log.warn("Skipping large organism in defrag: id={}, size={}, nextFreeAddr={}, soupSize={}", 
+                        org.getId(), size, nextFreeAddr, soupSize);
+                skippedCount++;
+                continue;
             }
             
             if (oldAddr != nextFreeAddr) {
@@ -107,8 +111,13 @@ public class Defragmenter {
             nextFreeAddr += size;
         }
         
-        // Rebuild free list with single contiguous block at the end
-        memoryManager.rebuild(nextFreeAddr);
+        // Only rebuild free list if no organisms were skipped
+        // Otherwise the free list would be corrupted (skipped organisms are still allocated)
+        if (skippedCount == 0) {
+            memoryManager.rebuild(nextFreeAddr);
+        } else {
+            log.warn("Partial defragmentation: skipped {} organisms, not rebuilding free list", skippedCount);
+        }
         
         defragmentations++;
         totalMoved += movedCount;
