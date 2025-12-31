@@ -77,10 +77,25 @@ public class Defragmenter {
         
         int movedCount = 0;
         int nextFreeAddr = 0;
+        int soupSize = memoryManager.getTotalMemory();
         
         for (Organism org : aliveOrganisms) {
             int oldAddr = org.getStartAddr();
             int size = org.getSize();
+            
+            // Sanity check: skip organisms with invalid size or address
+            if (size <= 0 || size > 1000 || oldAddr < 0 || oldAddr + size > soupSize) {
+                log.warn("Skipping invalid organism in defrag: id={}, addr={}, size={}", 
+                        org.getId(), oldAddr, size);
+                continue;
+            }
+            
+            // Safety: ensure we don't overflow
+            if (nextFreeAddr + size > soupSize) {
+                log.error("Defragmentation overflow! nextFreeAddr={}, size={}, soupSize={}", 
+                        nextFreeAddr, size, soupSize);
+                break;
+            }
             
             if (oldAddr != nextFreeAddr) {
                 // Need to move this organism

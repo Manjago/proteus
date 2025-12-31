@@ -46,6 +46,7 @@ public class Simulator {
     private int deathsByErrors = 0;
     private int aliveCount = 0;  // Track live organisms for O(1) check
     private int defragmentations = 0;
+    private int rejectedSpawns = 0;  // Spawns rejected due to invalid params
     
     // Control
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -302,10 +303,16 @@ public class Simulator {
             public boolean spawn(int address, int size, CpuState parentState) {
                 // Validate size (must be positive and reasonable)
                 if (size <= 0 || size > 1000) {
+                    rejectedSpawns++;
                     return false;
                 }
-                // Validate address
-                if (address < 0 || address + size > config.soupSize()) {
+                // Validate address (must be valid, not -1 from failed allocation)
+                if (address < 0) {
+                    rejectedSpawns++;
+                    return false;
+                }
+                if (address + size > config.soupSize()) {
+                    rejectedSpawns++;
                     return false;
                 }
                 // Check population limit
