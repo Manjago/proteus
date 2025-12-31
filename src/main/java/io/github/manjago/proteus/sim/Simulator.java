@@ -32,8 +32,11 @@ public class Simulator {
     private final VirtualCPU cpu;
     private final MutationTracker mutationTracker;
     
-    // All organisms (alive and dead)
+    // All organisms (alive and dead) - for history/genealogy
     private final List<Organism> organisms = new ArrayList<>();
+    
+    // Only alive organisms - for fast iteration
+    private final List<Organism> aliveOrganisms = new ArrayList<>();
     
     // Statistics
     private long totalCycles = 0;
@@ -86,6 +89,7 @@ public class Simulator {
         
         Organism adam = new Organism(0, addr, genome.length, -1, 0);
         organisms.add(adam);
+        aliveOrganisms.add(adam);
         reaper.register(adam);
         aliveCount++;
         
@@ -168,15 +172,28 @@ public class Simulator {
             return;
         }
         
-        // Round-robin: each organism gets one instruction
-        for (int i = 0; i < organisms.size(); i++) {
-            Organism org = organisms.get(i);
+        // Collect organisms to kill (can't modify list during iteration)
+        List<Organism> toKill = null;
+        
+        // Round-robin: each alive organism gets one instruction
+        for (int i = 0; i < aliveOrganisms.size(); i++) {
+            Organism org = aliveOrganisms.get(i);
+            
+            // Double-check (shouldn't happen, but defensive)
             if (!org.isAlive()) continue;
             
             cpu.execute(org.getState(), soup);
             
-            // Kill on too many errors
+            // Mark for death on too many errors
             if (org.getState().getErrors() > config.maxErrors()) {
+                if (toKill == null) toKill = new ArrayList<>();
+                toKill.add(org);
+            }
+        }
+        
+        // Kill marked organisms after iteration
+        if (toKill != null) {
+            for (Organism org : toKill) {
                 killOrganism(org, DeathCause.ERRORS);
             }
         }
@@ -190,6 +207,7 @@ public class Simulator {
         
         org.kill();
         aliveCount--;
+        aliveOrganisms.remove(org);  // O(n) but infrequent
         reaper.unregister(org);
         
         // Only free memory if size is valid
@@ -219,8 +237,10 @@ public class Simulator {
                 
                 if (addr == -1) {
                     int killed = reaper.reapUntilFree(requestedSize);
-                    aliveCount -= killed;  // Sync with reaper kills
                     if (killed > 0) {
+                        // Sync aliveOrganisms with actual state
+                        aliveOrganisms.removeIf(o -> !o.isAlive());
+                        aliveCount = aliveOrganisms.size();
                         addr = memoryManager.allocate(requestedSize);
                     }
                 }
@@ -262,6 +282,7 @@ public class Simulator {
                     totalCycles
                 );
                 organisms.add(child);
+                aliveOrganisms.add(child);
                 reaper.register(child);
                 aliveCount++;
                 totalSpawns++;
