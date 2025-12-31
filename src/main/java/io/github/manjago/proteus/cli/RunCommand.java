@@ -202,6 +202,9 @@ public class RunCommand implements Callable<Integer> {
         if (stats.defragmentations() > 0) {
             System.out.printf("   Defragmentations: %,d%n", stats.defragmentations());
         }
+        if (stats.memoryLeak() > 0) {
+            System.out.printf("   ⚠️  Memory leak: %,d cells%n", stats.memoryLeak());
+        }
         System.out.println();
         
         // Evolution

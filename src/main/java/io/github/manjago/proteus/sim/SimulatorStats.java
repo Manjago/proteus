@@ -15,6 +15,7 @@ public record SimulatorStats(
     int totalOrganisms,
     int memoryUsed,
     int memoryFree,
+    int memoryLeak,
     int largestFreeBlock,
     double fragmentation,
     int totalMutations,
@@ -66,6 +67,7 @@ public record SimulatorStats(
               Largest free:   %,d
               Fragmentation:  %.1f%%
               Defragmentations: %,d
+              Leak detected:  %,d cells
             
             Mutations:        %,d total (%.2f per spawn)
             """,
@@ -84,6 +86,7 @@ public record SimulatorStats(
             largestFreeBlock,
             fragmentation * 100,
             defragmentations,
+            memoryLeak,
             totalMutations, mutationsPerSpawn()
         );
     }

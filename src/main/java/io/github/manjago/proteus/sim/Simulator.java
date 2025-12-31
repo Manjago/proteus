@@ -411,6 +411,29 @@ public class Simulator {
     public AtomicIntegerArray getSoup() { return soup; }
     
     /**
+     * Calculate expected memory usage (for leak detection).
+     * Sum of: alive organisms' sizes + pending allocations
+     */
+    public int getExpectedMemoryUsed() {
+        int expected = 0;
+        for (Organism org : aliveOrganisms) {
+            expected += org.getSize();
+            CpuState state = org.getState();
+            if (state.hasPendingAllocation()) {
+                expected += state.getPendingAllocSize();
+            }
+        }
+        return expected;
+    }
+    
+    /**
+     * Detect memory leak (difference between actual and expected usage).
+     */
+    public int getMemoryLeak() {
+        return memoryManager.getUsedMemory() - getExpectedMemoryUsed();
+    }
+    
+    /**
      * Get current simulation statistics.
      */
     public SimulatorStats getStats() {
@@ -426,6 +449,7 @@ public class Simulator {
             organisms.size(),
             memoryManager.getUsedMemory(),
             memoryManager.getFreeMemory(),
+            getMemoryLeak(),
             memoryManager.getLargestFreeBlock(),
             memoryManager.getFragmentation(),
             mutationTracker.size(),
