@@ -249,6 +249,33 @@ public class Simulator {
         listener.onDeath(org, cause, totalCycles);
     }
     
+    /**
+     * Clear all pending allocations from alive organisms.
+     * Called before defragmentation.
+     * 
+     * We FREE the memory first, then clear the state. This way:
+     * - If defrag succeeds: rebuild() will overwrite free list anyway
+     * - If defrag aborts: free list correctly reflects freed memory
+     * 
+     * @return number of pending allocations cleared
+     */
+    private int clearAllPendingAllocations() {
+        int cleared = 0;
+        for (Organism org : aliveOrganisms) {
+            CpuState state = org.getState();
+            if (state.hasPendingAllocation()) {
+                // Free the memory first (important if defrag aborts!)
+                memoryManager.free(state.getPendingAllocAddr(), state.getPendingAllocSize());
+                state.clearPendingAllocation();
+                cleared++;
+            }
+        }
+        if (cleared > 0) {
+            log.debug("Cleared {} pending allocations before defrag", cleared);
+        }
+        return cleared;
+    }
+    
     private SystemCallHandler createHandler() {
         return new SystemCallHandler() {
             @Override
@@ -289,6 +316,13 @@ public class Simulator {
                     
                     if (defragmenter.needsDefragmentation(requestedSize, 0.5)) {
                         log.info("Triggering defragmentation: {} alive organisms", aliveOrganisms.size());
+                        
+                        // CRITICAL: Clear all pending allocations before defrag!
+                        // rebuild() will reset the free list, making pending addresses invalid.
+                        // If we don't clear them, organisms will double-free on death.
+                        // We free() before clear() so if defrag aborts, memory is still correct.
+                        clearAllPendingAllocations();
+                        
                         int moved = defragmenter.defragment(aliveOrganisms);
                         if (moved > 0) {
                             defragmentations++;

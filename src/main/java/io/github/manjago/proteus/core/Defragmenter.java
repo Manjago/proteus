@@ -99,7 +99,7 @@ public class Defragmenter {
         
         // Check if all organisms fit
         if (totalSize > soupSize) {
-            log.warn("Cannot defragment: total organism size {} exceeds soup size {}", 
+            log.debug("Cannot defragment: total organism size {} exceeds soup size {}", 
                     totalSize, soupSize);
             return 0;
         }
