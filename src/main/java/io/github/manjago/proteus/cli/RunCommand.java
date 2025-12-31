@@ -52,13 +52,8 @@ public class RunCommand implements Callable<Integer> {
         SimulatorConfig config = buildConfig();
         
         if (!quiet) {
-            System.out.println();
-            System.out.println("╔═══════════════════════════════════════╗");
-            System.out.println("║          PROTEUS Simulator            ║");
-            System.out.println("║     Artificial Life Evolution         ║");
-            System.out.println("╚═══════════════════════════════════════╝");
-            System.out.println();
-            System.out.println(config);
+            printBanner();
+            printConfig(config);
         }
         
         // Create and configure simulator
@@ -67,22 +62,28 @@ public class RunCommand implements Callable<Integer> {
         // Setup graceful shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (simulator.isRunning()) {
-                System.out.println("\n⚠️  Shutdown requested, stopping gracefully...");
+                System.out.println("\n⏸️  Stopping gracefully...");
                 simulator.stop();
-                // Give it a moment to finish current cycle
                 try { Thread.sleep(100); } catch (InterruptedException ignored) {}
             }
         }));
         
         // Set listener for console output
         if (!quiet) {
-            simulator.setListener(new ConsoleListener());
+            simulator.setListener(new ConsoleProgressListener());
         }
         
         // Seed Adam
+        if (!quiet) {
+            System.out.println("🌱 Seeding Adam...");
+        }
         simulator.seedAdam();
         
         // Run simulation
+        if (!quiet) {
+            System.out.println("▶️  Running simulation...\n");
+        }
+        
         long startTime = System.currentTimeMillis();
         simulator.run(maxCycles != null ? maxCycles : 0);
         long elapsed = System.currentTimeMillis() - startTime;
@@ -93,6 +94,24 @@ public class RunCommand implements Callable<Integer> {
         }
         
         return 0;
+    }
+    
+    private void printBanner() {
+        System.out.println();
+        System.out.println("╔═══════════════════════════════════════╗");
+        System.out.println("║          PROTEUS Simulator            ║");
+        System.out.println("║     Artificial Life Evolution         ║");
+        System.out.println("╚═══════════════════════════════════════╝");
+        System.out.println();
+    }
+    
+    private void printConfig(SimulatorConfig config) {
+        System.out.println("Configuration:");
+        System.out.printf("  Soup size:       %,d cells%n", config.soupSize());
+        System.out.printf("  Mutation rate:   %.2f%%%n", config.mutationRate() * 100);
+        System.out.printf("  Max cycles:      %s%n", 
+                config.maxCycles() == 0 ? "∞ (infinite)" : String.format("%,d", config.maxCycles()));
+        System.out.println();
     }
     
     private SimulatorConfig buildConfig() {
@@ -128,36 +147,85 @@ public class RunCommand implements Callable<Integer> {
     
     private void printFinalReport(Simulator simulator, long elapsedMs) {
         SimulatorStats stats = simulator.getStats();
+        double speed = stats.totalCycles() * 1000.0 / Math.max(1, elapsedMs);
         
         System.out.println();
         System.out.println("═══════════════════════════════════════");
-        System.out.println("           SIMULATION COMPLETE         ");
+        System.out.println("         SIMULATION COMPLETE           ");
         System.out.println("═══════════════════════════════════════");
-        System.out.println(stats);
-        System.out.printf("Time elapsed: %,d ms%n", elapsedMs);
-        System.out.printf("Speed: %,.0f cycles/sec%n", 
-                stats.totalCycles() * 1000.0 / Math.max(1, elapsedMs));
+        System.out.println();
+        
+        // Time & Performance
+        System.out.printf("⏱️  Time: %s  |  Speed: %,.0f cycles/sec%n", 
+                formatDuration(elapsedMs), speed);
+        System.out.println();
+        
+        // Population
+        System.out.println("👥 Population:");
+        System.out.printf("   Alive: %,d  |  Total spawns: %,d%n", 
+                stats.aliveCount(), stats.totalSpawns());
+        System.out.printf("   Deaths: %,d by errors, %,d by reaper%n",
+                stats.deathsByErrors(), stats.deathsByReaper());
+        System.out.println();
+        
+        // Memory
+        System.out.println("💾 Memory:");
+        int totalMem = stats.memoryUsed() + stats.memoryFree();
+        System.out.printf("   Used: %,d / %,d cells (%.1f%%)%n", 
+                stats.memoryUsed(), totalMem,
+                100.0 * stats.memoryUsed() / totalMem);
+        System.out.printf("   Fragmentation: %.1f%%  |  Largest free: %,d%n",
+                stats.fragmentation() * 100, stats.largestFreeBlock());
+        System.out.println();
+        
+        // Evolution
+        System.out.println("🧬 Evolution:");
+        System.out.printf("   Mutations: %,d total (%.3f per spawn)%n",
+                stats.totalMutations(), stats.mutationsPerSpawn());
+        System.out.printf("   Reproduction rate: %.1f cycles/spawn%n",
+                stats.cyclesPerSpawn());
+        
+        System.out.println();
         System.out.println("═══════════════════════════════════════");
     }
     
-    /**
-     * Simple console listener for progress output.
-     */
-    private static class ConsoleListener implements SimulatorListener {
-        @Override
-        public void onSpawn(Organism child, Organism parent, long cycle) {
-            if (child.getId() <= 10 || child.getId() % 100 == 0) {
-                String parentStr = parent != null ? String.valueOf(parent.getId()) : "none";
-                System.out.printf("  🐣 Spawn #%d (parent: %s) at cycle %,d%n", 
-                        child.getId(), parentStr, cycle);
-            }
+    private String formatDuration(long ms) {
+        if (ms < 1000) {
+            return ms + " ms";
+        } else if (ms < 60_000) {
+            return String.format("%.1f sec", ms / 1000.0);
+        } else {
+            long minutes = ms / 60_000;
+            long seconds = (ms % 60_000) / 1000;
+            return String.format("%d min %d sec", minutes, seconds);
         }
+    }
+    
+    /**
+     * Console progress listener with live updates.
+     */
+    private static class ConsoleProgressListener implements SimulatorListener {
+        private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+        private int spinnerIdx = 0;
         
         @Override
         public void onProgress(SimulatorStats stats) {
-            System.out.printf("   📊 Cycle %,d: %d alive, %d spawns, %d reaped%n",
-                    stats.totalCycles(), stats.aliveCount(), 
-                    stats.totalSpawns(), stats.deathsByReaper());
+            String spinner = SPINNER[spinnerIdx++ % SPINNER.length];
+            
+            // Compact one-line progress
+            System.out.printf("\r%s Cycle %,d  |  👥 %d alive  |  🐣 %d spawns  |  💀 %d deaths  |  🧬 %d mutations   ",
+                    spinner,
+                    stats.totalCycles(),
+                    stats.aliveCount(),
+                    stats.totalSpawns(),
+                    stats.deathsByErrors() + stats.deathsByReaper(),
+                    stats.totalMutations());
+            System.out.flush();
+        }
+        
+        @Override
+        public void onCheckpoint(long cycle) {
+            System.out.printf("%n💾 Checkpoint at cycle %,d%n", cycle);
         }
     }
 }
