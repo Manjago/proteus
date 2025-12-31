@@ -40,6 +40,9 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = {"--seed"}, description = "Random seed for reproducibility (0 = random)")
     private Long randomSeed;
     
+    @Option(names = {"--max-organisms"}, description = "Maximum living organisms")
+    private Integer maxOrganisms;
+    
     @Option(names = {"-o", "--output"}, description = "Output file for state")
     private Path outputFile;
     
@@ -119,8 +122,12 @@ public class RunCommand implements Callable<Integer> {
         System.out.println("Configuration:");
         System.out.printf("  Soup size:       %,d cells%n", config.soupSize());
         System.out.printf("  Mutation rate:   %.2f%%%n", config.mutationRate() * 100);
+        System.out.printf("  Max organisms:   %,d%n", config.maxOrganisms());
         System.out.printf("  Max cycles:      %s%n", 
                 config.maxCycles() == 0 ? "∞ (infinite)" : String.format("%,d", config.maxCycles()));
+        if (config.randomSeed() != 0) {
+            System.out.printf("  Seed:            %d%n", config.randomSeed());
+        }
         System.out.println();
     }
     
@@ -150,6 +157,7 @@ public class RunCommand implements Callable<Integer> {
         if (soupSize != null) builder.soupSize(soupSize);
         if (mutationRate != null) builder.mutationRate(mutationRate);
         if (randomSeed != null) builder.randomSeed(randomSeed);
+        if (maxOrganisms != null) builder.maxOrganisms(maxOrganisms);
         if (maxCycles != null) builder.maxCycles(maxCycles);
         if (outputFile != null) builder.dataFile(outputFile);
         if (reportInterval != null) builder.reportInterval(reportInterval);

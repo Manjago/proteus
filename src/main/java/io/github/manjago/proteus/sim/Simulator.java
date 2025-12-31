@@ -273,6 +273,18 @@ public class Simulator {
                 if (address < 0 || address + size > config.soupSize()) {
                     return false;
                 }
+                // Check population limit
+                if (aliveCount >= config.maxOrganisms()) {
+                    // Too many organisms - trigger reaper to make room
+                    int killed = reaper.reap() != null ? 1 : 0;
+                    if (killed > 0) {
+                        aliveOrganisms.removeIf(o -> !o.isAlive());
+                        aliveCount = aliveOrganisms.size();
+                    }
+                    if (aliveCount >= config.maxOrganisms()) {
+                        return false; // Still full, reject spawn
+                    }
+                }
                 
                 // Find parent
                 Organism parent = null;

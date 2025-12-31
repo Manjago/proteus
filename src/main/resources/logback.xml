@@ -11,7 +11,7 @@
         </encoder>
     </appender>
     
-    <!-- File: все логи -->
+    <!-- File: INFO и выше (не DEBUG в production) -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>proteus.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
@@ -25,8 +25,8 @@
         </encoder>
     </appender>
     
-    <!-- Proteus loggers -->
-    <logger name="io.github.manjago.proteus" level="DEBUG" additivity="false">
+    <!-- Proteus loggers - INFO by default, DEBUG via system property -->
+    <logger name="io.github.manjago.proteus" level="${proteus.log.level:-INFO}" additivity="false">
         <appender-ref ref="FILE" />
         <appender-ref ref="CONSOLE" />
     </logger>
