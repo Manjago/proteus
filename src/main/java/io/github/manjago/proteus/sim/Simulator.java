@@ -45,6 +45,7 @@ public class Simulator {
     private int failedAllocations = 0;
     private int deathsByErrors = 0;
     private int aliveCount = 0;  // Track live organisms for O(1) check
+    private int maxAlive = 0;    // Peak population
     private int defragmentations = 0;
     private int rejectedSpawns = 0;  // Spawns rejected due to invalid params
     
@@ -107,6 +108,7 @@ public class Simulator {
         aliveOrganisms.add(adam);
         reaper.register(adam);
         aliveCount++;
+        maxAlive = Math.max(maxAlive, aliveCount);
         
         log.info("Adam seeded at address {} (size: {} instructions)", addr, genome.length);
         listener.onSpawn(adam, null, totalCycles);
@@ -350,6 +352,7 @@ public class Simulator {
                 aliveOrganisms.add(child);
                 reaper.register(child);
                 aliveCount++;
+                maxAlive = Math.max(maxAlive, aliveCount);
                 totalSpawns++;
                 
                 log.debug("Spawn: {} (parent: {})", child.getId(), parentId);
@@ -394,6 +397,7 @@ public class Simulator {
             reaper.getReapCount(),
             failedAllocations,
             aliveCount,  // O(1) instead of O(n) stream
+            maxAlive,
             organisms.size(),
             memoryManager.getUsedMemory(),
             memoryManager.getFreeMemory(),

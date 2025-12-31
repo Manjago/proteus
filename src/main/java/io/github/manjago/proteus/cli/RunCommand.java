@@ -182,8 +182,8 @@ public class RunCommand implements Callable<Integer> {
         
         // Population
         System.out.println("👥 Population:");
-        System.out.printf("   Alive: %,d  |  Total spawns: %,d%n", 
-                stats.aliveCount(), stats.totalSpawns());
+        System.out.printf("   Alive: %,d  |  Max: %,d  |  Total spawns: %,d%n", 
+                stats.aliveCount(), stats.maxAlive(), stats.totalSpawns());
         System.out.printf("   Deaths: %,d by errors, %,d by reaper%n",
                 stats.deathsByErrors(), stats.deathsByReaper());
         if (stats.rejectedSpawns() > 0) {

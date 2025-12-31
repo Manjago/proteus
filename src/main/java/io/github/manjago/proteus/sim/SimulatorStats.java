@@ -11,6 +11,7 @@ public record SimulatorStats(
     int deathsByReaper,
     int failedAllocations,
     long aliveCount,
+    int maxAlive,
     int totalOrganisms,
     int memoryUsed,
     int memoryFree,
@@ -57,6 +58,7 @@ public record SimulatorStats(
             
             Population:
               Alive:          %,d
+              Max alive:      %,d
               Total ever:     %,d
             
             Memory:
@@ -75,6 +77,7 @@ public record SimulatorStats(
             deathsByErrors + deathsByReaper, deathRatePer1000(),
             failedAllocations,
             aliveCount,
+            maxAlive,
             totalOrganisms,
             memoryUsed, memoryUsed + memoryFree,
             100.0 * memoryUsed / (memoryUsed + memoryFree),
