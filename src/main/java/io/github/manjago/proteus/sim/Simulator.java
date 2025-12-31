@@ -31,6 +31,7 @@ public class Simulator {
     private final Reaper reaper;
     private final VirtualCPU cpu;
     private final MutationTracker mutationTracker;
+    private final Defragmenter defragmenter;
     
     // All organisms (alive and dead) - for history/genealogy
     private final List<Organism> organisms = new ArrayList<>();
@@ -44,6 +45,7 @@ public class Simulator {
     private int failedAllocations = 0;
     private int deathsByErrors = 0;
     private int aliveCount = 0;  // Track live organisms for O(1) check
+    private int defragmentations = 0;
     
     // Control
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -62,6 +64,7 @@ public class Simulator {
         this.memoryManager = new FreeListMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
+        this.defragmenter = new Defragmenter(soup, memoryManager);
         this.cpu = new VirtualCPU(config.mutationRate(), new Random(actualSeed), createHandler());
         this.cpu.setMutationTracker(mutationTracker);
         
@@ -246,12 +249,22 @@ public class Simulator {
                 
                 int addr = memoryManager.allocate(requestedSize);
                 
+                // First attempt: try reaping old organisms
                 if (addr == -1) {
                     int killed = reaper.reapUntilFree(requestedSize);
                     if (killed > 0) {
                         // Sync aliveOrganisms with actual state
                         aliveOrganisms.removeIf(o -> !o.isAlive());
                         aliveCount = aliveOrganisms.size();
+                        addr = memoryManager.allocate(requestedSize);
+                    }
+                }
+                
+                // Second attempt: defragment if fragmented
+                if (addr == -1 && defragmenter.needsDefragmentation(requestedSize, 0.5)) {
+                    int moved = defragmenter.defragment(aliveOrganisms);
+                    if (moved > 0) {
+                        defragmentations++;
                         addr = memoryManager.allocate(requestedSize);
                     }
                 }
@@ -356,7 +369,8 @@ public class Simulator {
             memoryManager.getFreeMemory(),
             memoryManager.getLargestFreeBlock(),
             memoryManager.getFragmentation(),
-            mutationTracker.size()
+            mutationTracker.size(),
+            defragmentations
         );
     }
 }

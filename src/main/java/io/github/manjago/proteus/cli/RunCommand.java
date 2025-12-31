@@ -196,6 +196,9 @@ public class RunCommand implements Callable<Integer> {
                 100.0 * stats.memoryUsed() / totalMem);
         System.out.printf("   Fragmentation: %.1f%%  |  Largest free: %,d%n",
                 stats.fragmentation() * 100, stats.largestFreeBlock());
+        if (stats.defragmentations() > 0) {
+            System.out.printf("   Defragmentations: %,d%n", stats.defragmentations());
+        }
         System.out.println();
         
         // Evolution

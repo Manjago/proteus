@@ -171,6 +171,24 @@ public class FreeListMemoryManager implements MemoryManager {
         return freeList.size();
     }
     
+    @Override
+    public void rebuild(int usedEnd) {
+        if (usedEnd < 0 || usedEnd > totalMemory) {
+            throw new IllegalArgumentException("Invalid usedEnd: " + usedEnd);
+        }
+        
+        freeList.clear();
+        
+        if (usedEnd < totalMemory) {
+            // Single contiguous free block at the end
+            freeList.add(new FreeBlock(usedEnd, totalMemory - usedEnd));
+            log.debug("Rebuilt free list: single block at {} with size {}", 
+                      usedEnd, totalMemory - usedEnd);
+        } else {
+            log.debug("Rebuilt free list: no free memory (soup is full)");
+        }
+    }
+    
     /**
      * Get a snapshot of the free list for diagnostics.
      * 

@@ -8,11 +8,14 @@ package io.github.manjago.proteus.core;
  * - Its own CPU state (registers, IP)
  * - Lifecycle tracking (age, errors, alive status)
  * - Genealogy (parentId for family tree)
+ * 
+ * In ISA v1.2, organisms are position-independent, so startAddr can be
+ * changed during defragmentation without breaking execution.
  */
 public class Organism {
     
     private final int id;
-    private final int startAddr;
+    private int startAddr;  // Mutable for defragmentation (v1.2)
     private final int size;
     private final CpuState state;
     private final int parentId;
@@ -46,6 +49,18 @@ public class Organism {
     
     public int getStartAddr() {
         return startAddr;
+    }
+    
+    /**
+     * Update organism's start address (for defragmentation).
+     * Also updates the CpuState's startAddr.
+     * Safe in ISA v1.2 due to position-independent code.
+     * 
+     * @param newAddr new memory address
+     */
+    public void setStartAddr(int newAddr) {
+        this.startAddr = newAddr;
+        this.state.setStartAddr(newAddr);
     }
     
     public int getSize() {

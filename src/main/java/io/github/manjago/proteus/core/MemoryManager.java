@@ -76,4 +76,12 @@ public interface MemoryManager {
      * @return count of separate free blocks
      */
     int getFreeBlockCount();
+    
+    /**
+     * Rebuild free list after defragmentation.
+     * Sets up a single free block starting at usedEnd.
+     * 
+     * @param usedEnd address where used memory ends (free space starts here)
+     */
+    void rebuild(int usedEnd);
 }

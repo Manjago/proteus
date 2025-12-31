@@ -15,7 +15,8 @@ public record SimulatorStats(
     int memoryFree,
     int largestFreeBlock,
     double fragmentation,
-    int totalMutations
+    int totalMutations,
+    int defragmentations
 ) {
     
     /**
@@ -60,6 +61,7 @@ public record SimulatorStats(
               Used:           %,d / %,d (%.1f%%)
               Largest free:   %,d
               Fragmentation:  %.1f%%
+              Defragmentations: %,d
             
             Mutations:        %,d total (%.2f per spawn)
             """,
@@ -75,6 +77,7 @@ public record SimulatorStats(
             100.0 * memoryUsed / (memoryUsed + memoryFree),
             largestFreeBlock,
             fragmentation * 100,
+            defragmentations,
             totalMutations, mutationsPerSpawn()
         );
     }
