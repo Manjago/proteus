@@ -295,6 +295,12 @@ public final class VirtualCPU {
         int requestedSize = state.getRegister(r1);
         int allocatedAddr = syscallHandler.allocate(requestedSize);
         state.setRegister(r2, allocatedAddr);
+        
+        // Track pending allocation for cleanup if organism dies before SPAWN
+        if (allocatedAddr >= 0) {
+            state.setPendingAllocation(allocatedAddr, requestedSize);
+        }
+        
         state.advanceIp();
         
         if (allocatedAddr < 0) {
@@ -312,6 +318,11 @@ public final class VirtualCPU {
         int size = state.getRegister(r2);
         
         boolean success = syscallHandler.spawn(addr, size, state);
+        
+        // Clear pending allocation - memory ownership transfers to child
+        // (or should be freed by spawn handler if spawn failed)
+        state.clearPendingAllocation();
+        
         state.advanceIp();
         
         if (success) {

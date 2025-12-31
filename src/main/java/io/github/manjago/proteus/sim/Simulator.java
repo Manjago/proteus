@@ -227,6 +227,13 @@ public class Simulator {
         aliveOrganisms.remove(org);  // O(n) but infrequent
         reaper.unregister(org);
         
+        // Free pending allocation (memory allocated for child but not spawned)
+        CpuState state = org.getState();
+        if (state.hasPendingAllocation()) {
+            memoryManager.free(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            state.clearPendingAllocation();
+        }
+        
         // Only free memory if size is valid
         if (org.getSize() > 0) {
             memoryManager.free(org.getStartAddr(), org.getSize());
@@ -303,18 +310,31 @@ public class Simulator {
             
             @Override
             public boolean spawn(int address, int size, CpuState parentState) {
+                // Get pending allocation info for proper cleanup
+                int pendingAddr = parentState.getPendingAllocAddr();
+                int pendingSize = parentState.getPendingAllocSize();
+                
                 // Validate size (must be positive and reasonable)
                 if (size <= 0 || size > 1000) {
                     rejectedSpawns++;
+                    // Free pending allocation if valid
+                    if (pendingAddr >= 0 && pendingSize > 0) {
+                        memoryManager.free(pendingAddr, pendingSize);
+                    }
                     return false;
                 }
                 // Validate address (must be valid, not -1 from failed allocation)
                 if (address < 0) {
                     rejectedSpawns++;
+                    // No memory to free - allocation failed
                     return false;
                 }
                 if (address + size > config.soupSize()) {
                     rejectedSpawns++;
+                    // Free pending allocation if valid
+                    if (pendingAddr >= 0 && pendingSize > 0) {
+                        memoryManager.free(pendingAddr, pendingSize);
+                    }
                     return false;
                 }
                 // Check population limit
@@ -326,6 +346,11 @@ public class Simulator {
                         aliveCount = aliveOrganisms.size();
                     }
                     if (aliveCount >= config.maxOrganisms()) {
+                        rejectedSpawns++;
+                        // Free pending allocation
+                        if (pendingAddr >= 0 && pendingSize > 0) {
+                            memoryManager.free(pendingAddr, pendingSize);
+                        }
                         return false; // Still full, reject spawn
                     }
                 }

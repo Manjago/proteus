@@ -84,6 +84,13 @@ public class AgeBasedReaper implements Reaper {
         totalAgeAtDeath += age;
         reapCount++;
         
+        // Free pending allocation (memory allocated for child but not spawned)
+        CpuState state = victim.getState();
+        if (state.hasPendingAllocation()) {
+            memoryManager.free(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            state.clearPendingAllocation();
+        }
+        
         // Free its memory (only if size is valid)
         if (victim.getSize() > 0) {
             memoryManager.free(victim.getStartAddr(), victim.getSize());

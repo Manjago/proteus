@@ -7,6 +7,7 @@ package io.github.manjago.proteus.core;
  * - 8 general-purpose registers (R0-R7)
  * - Instruction pointer (IP) — now RELATIVE to startAddr
  * - Start address — absolute address of organism's genome in soup
+ * - Pending allocation — memory allocated for child but not yet spawned
  * 
  * In v1.2, IP is relative: actual address = startAddr + ip
  */
@@ -36,6 +37,14 @@ public final class CpuState {
     /** Age - total instructions executed */
     private long age;
     
+    /** 
+     * Pending allocation for child organism.
+     * Set by ALLOCATE, cleared by SPAWN (success or fail).
+     * If organism dies with pending allocation, it should be freed.
+     */
+    private int pendingAllocAddr = -1;
+    private int pendingAllocSize = 0;
+    
     public CpuState() {
         this.registers = new int[REGISTER_COUNT];
         this.ip = 0;
@@ -62,6 +71,8 @@ public final class CpuState {
         this.startAddr = other.startAddr;
         this.errors = other.errors;
         this.age = other.age;
+        this.pendingAllocAddr = other.pendingAllocAddr;
+        this.pendingAllocSize = other.pendingAllocSize;
     }
     
     // ========== Register Access ==========
@@ -165,13 +176,48 @@ public final class CpuState {
     
     /**
      * Full reset - all registers to 0, IP to 0, errors to 0, age to 0.
-     * startAddr is preserved.
+     * startAddr is preserved. Pending allocation is cleared.
      */
     public void reset() {
         clearRegisters();
         ip = 0;
         errors = 0;
         age = 0;
+        pendingAllocAddr = -1;
+        pendingAllocSize = 0;
+    }
+    
+    // ========== Pending Allocation (for child memory management) ==========
+    
+    /**
+     * Set pending allocation when ALLOCATE succeeds.
+     */
+    public void setPendingAllocation(int addr, int size) {
+        this.pendingAllocAddr = addr;
+        this.pendingAllocSize = size;
+    }
+    
+    /**
+     * Clear pending allocation (called after SPAWN, successful or not).
+     */
+    public void clearPendingAllocation() {
+        this.pendingAllocAddr = -1;
+        this.pendingAllocSize = 0;
+    }
+    
+    /**
+     * Check if there's a pending allocation.
+     */
+    public boolean hasPendingAllocation() {
+        return pendingAllocAddr >= 0 && pendingAllocSize > 0;
+    }
+    
+    public int getPendingAllocAddr() {
+        return pendingAllocAddr;
+    }
+    
+    public int getPendingAllocSize() {
+        return pendingAllocSize;
     }
     
     @Override
@@ -187,6 +233,10 @@ public final class CpuState {
         }
         sb.append("], errors=").append(errors);
         sb.append(", age=").append(age);
+        if (hasPendingAllocation()) {
+            sb.append(", pending=[").append(pendingAllocAddr)
+              .append(",").append(pendingAllocSize).append("]");
+        }
         sb.append('}');
         return sb.toString();
     }
