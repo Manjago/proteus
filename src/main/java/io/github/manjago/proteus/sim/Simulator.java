@@ -40,6 +40,7 @@ public class Simulator {
     private int totalSpawns = 0;
     private int failedAllocations = 0;
     private int deathsByErrors = 0;
+    private int aliveCount = 0;  // Track live organisms for O(1) check
     
     // Control
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -86,6 +87,7 @@ public class Simulator {
         Organism adam = new Organism(0, addr, genome.length, -1, 0);
         organisms.add(adam);
         reaper.register(adam);
+        aliveCount++;
         
         log.info("Adam seeded at address {} (size: {} instructions)", addr, genome.length);
         listener.onSpawn(adam, null, totalCycles);
@@ -161,6 +163,11 @@ public class Simulator {
         totalCycles++;
         mutationTracker.setCycle(totalCycles);
         
+        // Fast path: skip if no organisms alive
+        if (aliveCount == 0) {
+            return;
+        }
+        
         // Round-robin: each organism gets one instruction
         for (int i = 0; i < organisms.size(); i++) {
             Organism org = organisms.get(i);
@@ -176,14 +183,25 @@ public class Simulator {
     }
     
     private void killOrganism(Organism org, DeathCause cause) {
+        // Guard against double-kill
+        if (!org.isAlive()) {
+            return;
+        }
+        
         org.kill();
+        aliveCount--;
         reaper.unregister(org);
         
         // Only free memory if size is valid
         if (org.getSize() > 0) {
             memoryManager.free(org.getStartAddr(), org.getSize());
         }
-        deathsByErrors++;
+        
+        // Track death cause correctly
+        if (cause == DeathCause.ERRORS) {
+            deathsByErrors++;
+        }
+        // Note: REAPED deaths are counted by reaper itself
         
         log.debug("Organism {} died: {}", org.getId(), cause);
         listener.onDeath(org, cause, totalCycles);
@@ -201,6 +219,7 @@ public class Simulator {
                 
                 if (addr == -1) {
                     int killed = reaper.reapUntilFree(requestedSize);
+                    aliveCount -= killed;  // Sync with reaper kills
                     if (killed > 0) {
                         addr = memoryManager.allocate(requestedSize);
                     }
@@ -244,6 +263,7 @@ public class Simulator {
                 );
                 organisms.add(child);
                 reaper.register(child);
+                aliveCount++;
                 totalSpawns++;
                 
                 log.debug("Spawn: {} (parent: {})", child.getId(), parentId);
@@ -255,11 +275,10 @@ public class Simulator {
     }
     
     private void reportProgress() {
-        long alive = organisms.stream().filter(Organism::isAlive).count();
         int reaped = reaper.getReapCount();
         
         log.info("Cycle {}: {} alive, {} spawns, {} reaped, {} errors",
-                totalCycles, alive, totalSpawns, reaped, deathsByErrors);
+                totalCycles, aliveCount, totalSpawns, reaped, deathsByErrors);
         
         listener.onProgress(getStats());
     }
@@ -281,15 +300,13 @@ public class Simulator {
      * Get current simulation statistics.
      */
     public SimulatorStats getStats() {
-        long alive = organisms.stream().filter(Organism::isAlive).count();
-        
         return new SimulatorStats(
             totalCycles,
             totalSpawns,
             deathsByErrors,
             reaper.getReapCount(),
             failedAllocations,
-            alive,
+            aliveCount,  // O(1) instead of O(n) stream
             organisms.size(),
             memoryManager.getUsedMemory(),
             memoryManager.getFreeMemory(),
