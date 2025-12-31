@@ -65,7 +65,7 @@ class OpCodeTest {
     @DisplayName("fromCode returns null for unknown opcodes")
     void fromCodeReturnsNullForUnknown() {
         assertNull(fromCode(0xFF)); // not defined
-        assertNull(fromCode(0x03)); // gap between MOVI and ADD
+        assertNull(fromCode(0x04)); // gap between GETADDR and ADD (v1.2)
         assertNull(fromCode(-1));   // negative
         assertNull(fromCode(256));  // out of range
     }
@@ -76,6 +76,7 @@ class OpCodeTest {
         assertEquals(NOP, fromCode(0x00));
         assertEquals(MOV, fromCode(0x01));
         assertEquals(MOVI, fromCode(0x02));
+        assertEquals(GETADDR, fromCode(0x03));  // v1.2
         assertEquals(ADD, fromCode(0x10));
         assertEquals(SUB, fromCode(0x11));
         assertEquals(INC, fromCode(0x12));
@@ -92,18 +93,20 @@ class OpCodeTest {
     }
 
     @Test
-    @DisplayName("Operand counts are correct")
+    @DisplayName("Operand counts are correct (v1.2)")
     void operandCountsAreCorrect() {
         assertEquals(0, NOP.getOperandCount());
         assertEquals(2, MOV.getOperandCount());
+        assertEquals(1, MOVI.getOperandCount());  // R_dst (imm is in instruction)
+        assertEquals(1, GETADDR.getOperandCount());  // v1.2: R_dst
         assertEquals(2, ADD.getOperandCount());
         assertEquals(1, INC.getOperandCount());
         assertEquals(1, DEC.getOperandCount());
         assertEquals(2, LOAD.getOperandCount());
         assertEquals(2, STORE.getOperandCount());
-        assertEquals(1, JMP.getOperandCount());
-        assertEquals(2, JMPZ.getOperandCount());
-        assertEquals(2, JMPN.getOperandCount());
+        assertEquals(0, JMP.getOperandCount());   // v1.2: offset in instruction
+        assertEquals(1, JMPZ.getOperandCount());  // v1.2: R_cond (offset in instruction)
+        assertEquals(2, JMPN.getOperandCount());  // v1.2: R_a, R_b (offset in instruction)
         assertEquals(2, COPY.getOperandCount());
         assertEquals(2, ALLOCATE.getOperandCount());
         assertEquals(2, SPAWN.getOperandCount());
@@ -189,5 +192,62 @@ class OpCodeTest {
             int instruction = encodeImm(MOVI, r, 100);
             assertEquals(r, decodeR1(instruction));
         }
+    }
+    
+    // ========== v1.2 Jump Encoding Tests ==========
+    
+    @Test
+    @DisplayName("encodeJump encodes positive offset correctly")
+    void encodeJumpPositiveOffset() {
+        int instruction = encodeJump(100);
+        
+        assertEquals(JMP, decodeOpCode(instruction));
+        assertEquals(100, decodeOffset(instruction));
+    }
+    
+    @Test
+    @DisplayName("encodeJump encodes negative offset correctly")
+    void encodeJumpNegativeOffset() {
+        int instruction = encodeJump(-50);
+        
+        assertEquals(JMP, decodeOpCode(instruction));
+        assertEquals(-50, decodeOffset(instruction));
+    }
+    
+    @Test
+    @DisplayName("encodeJumpZero encodes R_cond and offset")
+    void encodeJumpZeroEncodesCorrectly() {
+        int instruction = encodeJumpZero(3, -10);
+        
+        assertEquals(JMPZ, decodeOpCode(instruction));
+        assertEquals(3, decodeR1(instruction));
+        assertEquals(-10, decodeOffset(instruction));
+    }
+    
+    @Test
+    @DisplayName("encodeJumpLess encodes R_a, R_b and offset")
+    void encodeJumpLessEncodesCorrectly() {
+        int instruction = encodeJumpLess(2, 5, 15);
+        
+        assertEquals(JMPN, decodeOpCode(instruction));
+        assertEquals(2, decodeR1(instruction));
+        assertEquals(5, decodeR2(instruction));
+        assertEquals(15, decodeOffset(instruction));
+    }
+    
+    @Test
+    @DisplayName("decodeOffset sign-extends 18-bit value correctly")
+    void decodeOffsetSignExtends() {
+        // Test maximum positive offset
+        int instruction = encodeJump(0x1FFFF);  // 131,071
+        assertEquals(0x1FFFF, decodeOffset(instruction));
+        
+        // Test -1 (all 1s in 18 bits = 0x3FFFF)
+        instruction = encodeJump(-1);
+        assertEquals(-1, decodeOffset(instruction));
+        
+        // Test minimum negative offset
+        instruction = encodeJump(-131072);
+        assertEquals(-131072, decodeOffset(instruction));
     }
 }

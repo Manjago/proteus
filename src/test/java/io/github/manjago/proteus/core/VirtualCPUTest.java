@@ -202,66 +202,111 @@ class VirtualCPUTest {
     // ========== Control Flow Instructions ==========
     
     @Nested
-    @DisplayName("Control Flow Instructions")
+    @DisplayName("Control Flow Instructions (v1.2 relative)")
     class ControlFlowInstructions {
         
         @Test
-        @DisplayName("JMP sets IP to register value")
-        void jmpSetsIp() {
-            state.setRegister(0, 100);
-            memory.set(0, encode(JMP, 0));
+        @DisplayName("JMP adds offset to IP (forward)")
+        void jmpForward() {
+            // JMP +5: at IP=0, execute, advance to IP=1, then add offset → IP=6
+            memory.set(0, encodeJump(5));
             
             cpu.execute(state, memory);
             
-            assertEquals(100, state.getIp());
+            assertEquals(6, state.getIp());  // 0 + 1 + 5 = 6
+        }
+        
+        @Test
+        @DisplayName("JMP adds negative offset to IP (backward)")
+        void jmpBackward() {
+            state.setIp(10);
+            memory.set(10, encodeJump(-5));
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(6, state.getIp());  // 10 + 1 + (-5) = 6
+        }
+        
+        @Test
+        @DisplayName("JMP with offset 0 creates infinite loop")
+        void jmpInfiniteLoop() {
+            state.setIp(5);
+            memory.set(5, encodeJump(-1));  // Jump to self: 5 + 1 + (-1) = 5
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(5, state.getIp());
         }
         
         @Test
         @DisplayName("JMPZ jumps when register is zero")
         void jmpzJumpsOnZero() {
             state.setRegister(0, 0);   // Condition = 0
-            state.setRegister(1, 100); // Target address
-            memory.set(0, encode(JMPZ, 0, 1));
+            memory.set(0, encodeJumpZero(0, 10));  // Jump +10 if R0 == 0
             
             cpu.execute(state, memory);
             
-            assertEquals(100, state.getIp());
+            assertEquals(11, state.getIp());  // 0 + 1 + 10 = 11
         }
         
         @Test
         @DisplayName("JMPZ does not jump when register is non-zero")
         void jmpzNoJumpOnNonZero() {
             state.setRegister(0, 5);   // Condition != 0
-            state.setRegister(1, 100); // Target address
-            memory.set(0, encode(JMPZ, 0, 1));
+            memory.set(0, encodeJumpZero(0, 10));
             
             cpu.execute(state, memory);
             
-            assertEquals(1, state.getIp()); // Just advanced
+            assertEquals(1, state.getIp());  // Just advanced
         }
         
         @Test
-        @DisplayName("JMPN jumps when register is non-zero")
-        void jmpnJumpsOnNonZero() {
-            state.setRegister(0, 5);   // Condition != 0
-            state.setRegister(1, 100); // Target address
-            memory.set(0, encode(JMPN, 0, 1));
+        @DisplayName("JMPN jumps when R_a < R_b")
+        void jmpnJumpsWhenLess() {
+            state.setRegister(0, 3);   // R_a = 3
+            state.setRegister(1, 10);  // R_b = 10
+            memory.set(0, encodeJumpLess(0, 1, 5));  // Jump +5 if R0 < R1
             
             cpu.execute(state, memory);
             
-            assertEquals(100, state.getIp());
+            assertEquals(6, state.getIp());  // 0 + 1 + 5 = 6 (jumped because 3 < 10)
         }
         
         @Test
-        @DisplayName("JMPN does not jump when register is zero")
-        void jmpnNoJumpOnZero() {
-            state.setRegister(0, 0);   // Condition = 0
-            state.setRegister(1, 100); // Target address
-            memory.set(0, encode(JMPN, 0, 1));
+        @DisplayName("JMPN does not jump when R_a >= R_b")
+        void jmpnNoJumpWhenGreaterOrEqual() {
+            state.setRegister(0, 10);  // R_a = 10
+            state.setRegister(1, 5);   // R_b = 5
+            memory.set(0, encodeJumpLess(0, 1, 100));
             
             cpu.execute(state, memory);
             
-            assertEquals(1, state.getIp()); // Just advanced
+            assertEquals(1, state.getIp());  // Just advanced (10 >= 5)
+        }
+        
+        @Test
+        @DisplayName("JMPN does not jump when R_a == R_b")
+        void jmpnNoJumpWhenEqual() {
+            state.setRegister(0, 7);  // R_a = 7
+            state.setRegister(1, 7);  // R_b = 7
+            memory.set(0, encodeJumpLess(0, 1, 100));
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(1, state.getIp());  // Just advanced (7 == 7, not less)
+        }
+        
+        @Test
+        @DisplayName("JMPN with negative offset works (backward jump)")
+        void jmpnBackward() {
+            state.setRegister(0, 0);   // R_a = 0
+            state.setRegister(4, 10);  // R_b = 10
+            state.setIp(8);
+            memory.set(8, encodeJumpLess(0, 4, -5));  // Jump -5 if R0 < R4
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(4, state.getIp());  // 8 + 1 + (-5) = 4
         }
     }
     
@@ -478,16 +523,18 @@ class VirtualCPUTest {
     class IntegrationTests {
         
         @Test
-        @DisplayName("Simple loop executes correctly")
+        @DisplayName("Simple countdown loop executes correctly (v1.2)")
         void simpleLoop() {
-            // Program: count down from 5 to 0
-            // R0 = counter, R1 = loop address
+            // Program: count down from 5 to 0 using JMPN (R0 < R1)
+            // R0 = counter (starts at 5)
+            // R1 = zero (comparison target)
             state.setRegister(0, 5);
-            state.setRegister(1, 0); // Loop back to address 0
+            state.setRegister(1, 0);
             
-            memory.set(0, encode(DEC, 0));      // R0--
-            memory.set(1, encode(JMPN, 0, 1));  // if R0 != 0, jump to R1
-            memory.set(2, encode(NOP));         // End
+            // Loop: DEC R0, then JMPN R1, R0, -2 (jump if 0 < R0, i.e., R0 > 0)
+            memory.set(0, encode(DEC, 0));            // R0--
+            memory.set(1, encodeJumpLess(1, 0, -2));  // if R1(0) < R0, jump -2 → addr 0
+            memory.set(2, encode(NOP));               // End
             
             // Execute until program exits loop (IP reaches NOP at address 2)
             int maxCycles = 100;
@@ -496,35 +543,39 @@ class VirtualCPUTest {
             }
             
             assertEquals(0, state.getRegister(0));
-            assertEquals(2, state.getIp()); // Exited loop, pointing to NOP
+            assertEquals(2, state.getIp()); // Exited loop
             assertEquals(10, state.getAge()); // 5 iterations * 2 instructions
         }
         
         @Test
-        @DisplayName("Memory copy loop works")
+        @DisplayName("Memory copy loop works (v1.2 relative addressing)")
         void memoryCopyLoop() {
+            // In v1.2, LOAD/STORE are relative to startAddr.
+            // With startAddr=0 (default), they work with absolute addresses.
+            
             // Source data at 100-104
             for (int i = 0; i < 5; i++) {
                 memory.set(100 + i, 1000 + i);
             }
             
-            // R0 = source pointer (100)
-            // R1 = dest pointer (200)
+            // R0 = source offset (100) - relative to startAddr (0)
+            // R1 = dest offset (200) - relative to startAddr (0)
             // R2 = counter (5)
-            // R3 = loop address (0)
+            // R3 = size (for comparison)
             // R4 = temp for loaded value
             state.setRegister(0, 100);
             state.setRegister(1, 200);
-            state.setRegister(2, 5);
-            state.setRegister(3, 0);
+            state.setRegister(2, 0);   // current index
+            state.setRegister(3, 5);   // max count
             
-            // Copy loop using LOAD/STORE (not COPY, to avoid mutation concerns)
-            memory.set(0, encode(LOAD, 4, 0));   // R4 = memory[R0]
-            memory.set(1, encode(STORE, 1, 4));  // memory[R1] = R4
-            memory.set(2, encode(INC, 0));       // R0++
-            memory.set(3, encode(INC, 1));       // R1++
-            memory.set(4, encode(DEC, 2));       // R2--
-            memory.set(5, encode(JMPN, 2, 3));   // if R2 != 0, jump to R3
+            // Copy loop using LOAD/STORE (relative to startAddr=0)
+            // Loop at addresses 0-5:
+            memory.set(0, encode(LOAD, 4, 0));        // R4 = memory[startAddr + R0]
+            memory.set(1, encode(STORE, 1, 4));       // memory[startAddr + R1] = R4
+            memory.set(2, encode(INC, 0));            // R0++ (source offset)
+            memory.set(3, encode(INC, 1));            // R1++ (dest offset)
+            memory.set(4, encode(INC, 2));            // R2++ (counter)
+            memory.set(5, encodeJumpLess(2, 3, -6));  // if R2 < R3, jump -6 → addr 0
             
             // Execute loop
             int maxCycles = 100;
@@ -536,6 +587,39 @@ class VirtualCPUTest {
             for (int i = 0; i < 5; i++) {
                 assertEquals(1000 + i, memory.get(200 + i));
             }
+        }
+        
+        @Test
+        @DisplayName("GETADDR returns correct start address (v1.2)")
+        void getaddrWorks() {
+            int startAddr = 50;
+            state = new CpuState(startAddr);
+            
+            // Place GETADDR R3 at address 50
+            memory.set(startAddr, encode(GETADDR, 3));
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(startAddr, state.getRegister(3));
+            assertEquals(1, state.getIp());  // Relative IP advanced
+        }
+        
+        @Test
+        @DisplayName("LOAD/STORE work with non-zero startAddr (v1.2)")
+        void loadStoreWithNonZeroStart() {
+            int startAddr = 100;
+            state = new CpuState(startAddr);
+            
+            // Put value at startAddr + 10 = 110
+            memory.set(110, 42);
+            
+            // LOAD from offset 10 (which is startAddr + 10 = 110)
+            state.setRegister(1, 10);  // offset
+            memory.set(startAddr, encode(LOAD, 0, 1));  // R0 = memory[startAddr + R1]
+            
+            cpu.execute(state, memory);
+            
+            assertEquals(42, state.getRegister(0));
         }
     }
 }

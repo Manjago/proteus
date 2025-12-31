@@ -40,11 +40,18 @@ class DisassemblerTest {
     }
 
     @Test
-    @DisplayName("Jump instructions disassemble correctly")
+    @DisplayName("Jump instructions disassemble with offsets (v1.2)")
     void jumpDisassembly() {
-        assertEquals("JMP [R5]", disassemble(encode(JMP, 5)));
-        assertEquals("JMPZ R0, [R1]", disassemble(encode(JMPZ, 0, 1)));
-        assertEquals("JMPN R2, [R3]", disassemble(encode(JMPN, 2, 3)));
+        assertEquals("JMP +5", disassemble(encodeJump(5)));
+        assertEquals("JMP -10", disassemble(encodeJump(-10)));
+        assertEquals("JMPZ R0, +3", disassemble(encodeJumpZero(0, 3)));
+        assertEquals("JMPN R2, R3, -5", disassemble(encodeJumpLess(2, 3, -5)));
+    }
+    
+    @Test
+    @DisplayName("GETADDR disassembles correctly (v1.2)")
+    void getaddrDisassembly() {
+        assertEquals("GETADDR R5", disassemble(encode(GETADDR, 5)));
     }
 
     @Test
@@ -78,14 +85,14 @@ class DisassemblerTest {
         int[] code = {
             encode(NOP),
             encode(INC, 0),
-            encode(JMP, 1)
+            encodeJump(-2)  // v1.2: relative offset
         };
         
         String result = disassemble(code);
         
         assertTrue(result.contains("0000: NOP"));
         assertTrue(result.contains("0001: INC R0"));
-        assertTrue(result.contains("0002: JMP [R1]"));
+        assertTrue(result.contains("0002: JMP -2"));
     }
 
     @Test
@@ -133,9 +140,18 @@ class DisassemblerTest {
     @Test
     @DisplayName("Round-trip: encode -> disassemble produces readable output")
     void roundTripAllInstructions() {
-        // This is more of a smoke test - ensure all opcodes can be disassembled
+        // This is a smoke test - ensure all opcodes can be disassembled
         for (OpCode op : OpCode.values()) {
-            int instruction = encode(op, 1, 2, 3, 4);
+            int instruction;
+            
+            // v1.2: JMP/JMPZ/JMPN need special encoding
+            instruction = switch (op) {
+                case JMP -> encodeJump(5);
+                case JMPZ -> encodeJumpZero(0, 5);
+                case JMPN -> encodeJumpLess(0, 1, 5);
+                default -> encode(op, 1, 2, 3, 4);
+            };
+            
             String asm = disassemble(instruction);
             
             assertNotNull(asm);
@@ -146,24 +162,27 @@ class DisassemblerTest {
     }
 
     @Test
-    @DisplayName("Simple Adam-like program disassembles readably")
+    @DisplayName("Simple copy loop disassembles readably (v1.2)")
     void simpleAdamProgram() {
-        // A tiny self-copy loop (not real Adam, just for testing)
+        // A tiny copy loop using v1.2 instructions
         int[] code = {
-            encode(LOAD, 0, 1),    // R0 = memory[R1] (read source)
-            encode(STORE, 2, 0),   // memory[R2] = R0 (write dest)
-            encode(INC, 1),        // R1++ (next source)
-            encode(INC, 2),        // R2++ (next dest)
-            encode(DEC, 3),        // R3-- (counter)
-            encode(JMPN, 3, 4)     // if R3 != 0, jump to R4
+            encode(LOAD, 0, 1),       // R0 = memory[startAddr + R1]
+            encode(STORE, 2, 0),      // memory[startAddr + R2] = R0
+            encode(INC, 1),           // R1++
+            encode(INC, 2),           // R2++
+            encode(INC, 3),           // R3++ (counter)
+            encodeJumpLess(3, 4, -6)  // if R3 < R4, jump -6 (to start)
         };
         
         String result = disassemble(code);
-        System.out.println("=== Simple Copy Loop ===");
+        System.out.println("=== Simple Copy Loop (v1.2) ===");
         System.out.println(result);
-        System.out.println("========================");
+        System.out.println("===============================");
         
-        // Just verify it doesn't throw and produces output
+        // Verify output contains expected instructions
+        assertTrue(result.contains("LOAD"));
+        assertTrue(result.contains("STORE"));
+        assertTrue(result.contains("JMPN R3, R4, -6"));
         assertEquals(6, result.split("\n").length);
     }
 }
