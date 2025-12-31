@@ -389,6 +389,7 @@ public class Simulator {
         return new SimulatorStats(
             totalCycles,
             totalSpawns,
+            rejectedSpawns,
             deathsByErrors,
             reaper.getReapCount(),
             failedAllocations,

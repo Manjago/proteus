@@ -186,6 +186,9 @@ public class RunCommand implements Callable<Integer> {
                 stats.aliveCount(), stats.totalSpawns());
         System.out.printf("   Deaths: %,d by errors, %,d by reaper%n",
                 stats.deathsByErrors(), stats.deathsByReaper());
+        if (stats.rejectedSpawns() > 0) {
+            System.out.printf("   Rejected spawns: %,d (invalid addr/size)%n", stats.rejectedSpawns());
+        }
         System.out.println();
         
         // Memory

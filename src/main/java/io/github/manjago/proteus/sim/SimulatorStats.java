@@ -6,6 +6,7 @@ package io.github.manjago.proteus.sim;
 public record SimulatorStats(
     long totalCycles,
     int totalSpawns,
+    int rejectedSpawns,
     int deathsByErrors,
     int deathsByReaper,
     int failedAllocations,
@@ -47,6 +48,7 @@ public record SimulatorStats(
             === Simulation Statistics ===
             Cycles:           %,d
             Spawns:           %,d (%.1f cycles/spawn)
+            Rejected spawns:  %,d
             Deaths:
               By errors:      %,d
               By reaper:      %,d
@@ -67,6 +69,7 @@ public record SimulatorStats(
             """,
             totalCycles,
             totalSpawns, cyclesPerSpawn(),
+            rejectedSpawns,
             deathsByErrors,
             deathsByReaper,
             deathsByErrors + deathsByReaper, deathRatePer1000(),
