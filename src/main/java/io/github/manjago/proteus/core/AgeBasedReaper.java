@@ -84,8 +84,10 @@ public class AgeBasedReaper implements Reaper {
         totalAgeAtDeath += age;
         reapCount++;
         
-        // Free its memory
-        memoryManager.free(victim.getStartAddr(), victim.getSize());
+        // Free its memory (only if size is valid)
+        if (victim.getSize() > 0) {
+            memoryManager.free(victim.getStartAddr(), victim.getSize());
+        }
         
         log.debug("Reaped {} (age={}, freed {} cells)", 
                   victim.toShortString(), age, victim.getSize());

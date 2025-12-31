@@ -178,7 +178,11 @@ public class Simulator {
     private void killOrganism(Organism org, DeathCause cause) {
         org.kill();
         reaper.unregister(org);
-        memoryManager.free(org.getStartAddr(), org.getSize());
+        
+        // Only free memory if size is valid
+        if (org.getSize() > 0) {
+            memoryManager.free(org.getStartAddr(), org.getSize());
+        }
         deathsByErrors++;
         
         log.debug("Organism {} died: {}", org.getId(), cause);
@@ -211,6 +215,11 @@ public class Simulator {
             
             @Override
             public boolean spawn(int address, int size, CpuState parentState) {
+                // Validate size (must be positive and reasonable)
+                if (size <= 0 || size > 1000) {
+                    return false;
+                }
+                // Validate address
                 if (address < 0 || address + size > config.soupSize()) {
                     return false;
                 }
