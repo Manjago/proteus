@@ -2,7 +2,7 @@ package io.github.manjago.proteus.core;
 
 /**
  * Handler for system calls (ALLOCATE, SPAWN).
- * <p>
+ * 
  * These operations require interaction with the simulation environment
  * (memory manager, scheduler), so they are delegated to this interface.
  */

@@ -1,10 +1,8 @@
 package io.github.manjago.proteus.core;
 
-import org.jetbrains.annotations.NotNull;
-
 /**
  * CPU state for a single organism.
- * <p>
+ * 
  * Contains 8 general-purpose registers (R0-R7) and instruction pointer (IP).
  * Each organism has its own CpuState instance.
  */
@@ -43,7 +41,7 @@ public final class CpuState {
     /**
      * Copy constructor - creates independent copy of state.
      */
-    public CpuState(@NotNull CpuState other) {
+    public CpuState(CpuState other) {
         this.registers = other.registers.clone();
         this.ip = other.ip;
         this.errors = other.errors;
