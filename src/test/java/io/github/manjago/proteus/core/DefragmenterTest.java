@@ -46,24 +46,41 @@ class DefragmenterTest {
     @Test
     @DisplayName("needsDefragmentation returns true when highly fragmented")
     void defragNeededWhenFragmented() {
-        // Create fragmentation: allocate small blocks, free alternating ones
+        // Create fragmentation by allocating entire memory in small blocks,
+        // then freeing alternating ones (keeping last block to prevent coalesce with end)
+        
+        int blockSize = 50;
+        int numBlocks = SOUP_SIZE / blockSize;  // 20 blocks
         List<Integer> addresses = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
-            int addr = memoryManager.allocate(10);
+        
+        for (int i = 0; i < numBlocks; i++) {
+            int addr = memoryManager.allocate(blockSize);
+            assertTrue(addr >= 0, "Allocation should succeed");
             addresses.add(addr);
         }
-        // Free every other block to create gaps
-        for (int i = 0; i < addresses.size(); i += 2) {
-            memoryManager.free(addresses.get(i), 10);
+        
+        // Now memory is fully allocated (no free space)
+        assertEquals(0, memoryManager.getFreeMemory());
+        
+        // Free every other block EXCEPT the last one (to prevent coalesce)
+        for (int i = 0; i < addresses.size() - 1; i += 2) {
+            memoryManager.free(addresses.get(i), blockSize);
         }
         
-        // Now memory is fragmented with small free blocks
-        assertTrue(memoryManager.getFragmentation() > 0.5);
+        // Now we have holes of size 50 scattered throughout, but largest is 50
+        // Free memory = 10 blocks * 50 = 500
+        // Fragmentation = 1 - (50 / 500) = 0.9 (90%)
+        double frag = memoryManager.getFragmentation();
+        int largest = memoryManager.getLargestFreeBlock();
         
-        // If largest free block is smaller than required, need defrag
-        if (memoryManager.getLargestFreeBlock() < 50) {
-            assertTrue(defragmenter.needsDefragmentation(50, 0.5));
-        }
+        assertTrue(frag > 0.5, "Fragmentation should be > 50%, was " + (frag * 100) + "%");
+        assertEquals(blockSize, largest, "Largest block should be " + blockSize);
+        
+        // Need 100 cells but largest is 50 -> defrag needed
+        assertTrue(defragmenter.needsDefragmentation(100, 0.5));
+        
+        // Need 50 cells and largest is 50 -> defrag NOT needed (can allocate)
+        assertFalse(defragmenter.needsDefragmentation(50, 0.5));
     }
     
     @Test
