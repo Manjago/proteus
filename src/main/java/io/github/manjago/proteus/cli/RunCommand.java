@@ -54,83 +54,90 @@ public class RunCommand implements Callable<Integer> {
     
     @Override
     public Integer call() {
-        // Build configuration
-        SimulatorConfig config = buildConfig();
-        
-        if (!quiet) {
-            printBanner();
-            printConfig(config);
-        }
-        
-        // Create and configure simulator
-        Simulator simulator = new Simulator(config);
-        
-        // Setup graceful shutdown
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (simulator.isRunning()) {
-                System.out.println("\n⏸️  Stopping gracefully...");
-                simulator.stop();
-                try { Thread.sleep(100); } catch (InterruptedException ignored) {}
-            }
-        }));
-        
-        // Set listener for console output
+        Simulator simulator = null;
         ConsoleProgressListener progressListener = null;
-        if (!quiet) {
-            progressListener = new ConsoleProgressListener();
-            simulator.setListener(progressListener);
-        }
-        
-        // Seed Adam
-        if (!quiet) {
-            System.out.println("🌱 Seeding Adam...");
-        }
-        simulator.seedAdam();
-        
-        // Run simulation
-        if (!quiet) {
-            System.out.println("▶️  Running simulation...\n");
-        }
-        
         long startTime = System.currentTimeMillis();
-        boolean oomOccurred = false;
         
         try {
+            // Build configuration
+            SimulatorConfig config = buildConfig();
+            
+            if (!quiet) {
+                printBanner();
+                printConfig(config);
+            }
+            
+            // Create and configure simulator
+            simulator = new Simulator(config);
+            
+            // Setup graceful shutdown
+            final Simulator sim = simulator;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (sim.isRunning()) {
+                    System.out.println("\n⏸️  Stopping gracefully...");
+                    sim.stop();
+                    try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                }
+            }));
+            
+            // Set listener for console output
+            if (!quiet) {
+                progressListener = new ConsoleProgressListener();
+                simulator.setListener(progressListener);
+            }
+            
+            // Seed Adam
+            if (!quiet) {
+                System.out.println("🌱 Seeding Adam...");
+            }
+            simulator.seedAdam();
+            
+            // Run simulation
+            if (!quiet) {
+                System.out.println("▶️  Running simulation...\n");
+            }
+            
             simulator.run(maxCycles != null ? maxCycles : 0);
-        } catch (OutOfMemoryError e) {
-            oomOccurred = true;
-            // Clear progress line
+            
+            long elapsed = System.currentTimeMillis() - startTime;
+            
+            // Clear progress line before final report
             if (progressListener != null) {
                 progressListener.finish();
             }
+            
+            // Final report
+            if (!quiet) {
+                printFinalReport(simulator, elapsed);
+            }
+            
+            return 0;
+            
+        } catch (OutOfMemoryError e) {
+            // Try to report what we can
             System.out.println();
             System.out.println("❌ OUT OF MEMORY!");
             System.out.printf("   Heap: %,d MB used of %,d MB max%n",
                     Runtime.getRuntime().totalMemory() / (1024 * 1024),
                     Runtime.getRuntime().maxMemory() / (1024 * 1024));
-            SimulatorStats stats = simulator.getStats();
-            System.out.printf("   Reaper queue: %,d organisms (dead accumulation from lazy deletion)%n",
-                    stats.reaperQueueSize());
-            System.out.printf("   Cycle: %,d  |  Spawns: %,d%n", 
-                    stats.totalCycles(), stats.totalSpawns());
+            
+            if (simulator != null) {
+                try {
+                    SimulatorStats stats = simulator.getStats();
+                    System.out.printf("   Reaper queue: %,d organisms%n", stats.reaperQueueSize());
+                    System.out.printf("   Cycle: %,d  |  Spawns: %,d  |  Alive: %,d%n", 
+                            stats.totalCycles(), stats.totalSpawns(), stats.aliveCount());
+                } catch (Throwable ignored) {
+                    // Can't get stats - too little memory
+                }
+            }
+            
             System.out.println();
-            System.out.println("💡 Try: increase -Xmx, reduce --max-organisms, or reduce --cycles");
+            System.out.println("💡 Try: increase -Xmx or reduce --max-organisms");
             System.out.println();
+            
+            return 1;
         }
-        
-        long elapsed = System.currentTimeMillis() - startTime;
-        
-        // Clear progress line before final report
-        if (progressListener != null && !oomOccurred) {
-            progressListener.finish();
-        }
-        
-        // Final report
-        if (!quiet) {
-            printFinalReport(simulator, elapsed);
-        }
-        
-        return oomOccurred ? 1 : 0;
     }
     
     private void printBanner() {

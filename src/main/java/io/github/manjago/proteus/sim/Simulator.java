@@ -33,15 +33,13 @@ public class Simulator {
     private final MutationTracker mutationTracker;
     private final Defragmenter defragmenter;
     
-    // All organisms (alive and dead) - for history/genealogy
-    private final List<Organism> organisms = new ArrayList<>();
-    
     // Only alive organisms - for fast iteration
     private final List<Organism> aliveOrganisms = new ArrayList<>();
     
     // Statistics
     private long totalCycles = 0;
     private int totalSpawns = 0;
+    private int totalOrganismsCreated = 0;  // Counter instead of list (memory optimization)
     private int failedAllocations = 0;
     private int deathsByErrors = 0;
     private int aliveCount = 0;  // Track live organisms for O(1) check
@@ -104,7 +102,7 @@ public class Simulator {
         }
         
         Organism adam = new Organism(0, addr, genome.length, -1, 0);
-        organisms.add(adam);
+        totalOrganismsCreated++;
         aliveOrganisms.add(adam);
         reaper.register(adam);
         aliveCount++;
@@ -421,13 +419,13 @@ public class Simulator {
                 
                 // Use actualSize (from pending allocation) not size (potentially mutated)
                 Organism child = new Organism(
-                    organisms.size(),
+                    totalOrganismsCreated,
                     address,
                     actualSize,
                     parentId,
                     totalCycles
                 );
-                organisms.add(child);
+                totalOrganismsCreated++;
                 aliveOrganisms.add(child);
                 reaper.register(child);
                 aliveCount++;
@@ -466,7 +464,8 @@ public class Simulator {
     public int getTotalSpawns() { return totalSpawns; }
     public int getDeathsByErrors() { return deathsByErrors; }
     public int getFailedAllocations() { return failedAllocations; }
-    public List<Organism> getOrganisms() { return new ArrayList<>(organisms); }
+    public List<Organism> getAliveOrganisms() { return new ArrayList<>(aliveOrganisms); }
+    public int getTotalOrganismsCreated() { return totalOrganismsCreated; }
     public MemoryManager getMemoryManager() { return memoryManager; }
     public Reaper getReaper() { return reaper; }
     public MutationTracker getMutationTracker() { return mutationTracker; }
@@ -512,7 +511,7 @@ public class Simulator {
             failedAllocations,
             aliveCount,  // O(1) instead of O(n) stream
             maxAlive,
-            organisms.size(),
+            totalOrganismsCreated,
             memoryManager.getUsedMemory(),
             memoryManager.getFreeMemory(),
             getMemoryLeak(),

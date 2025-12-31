@@ -275,6 +275,29 @@ if (rawQueueSize > aliveCount * 2 + 10_000) {
 - ✅ cleanup(): O(n) но редко (каждые 10K+ циклов)
 - ✅ Предотвращает OOM от накопления мёртвых
 
+### 4.7. Memory Optimization ✅
+
+**Проблема:** `List<Organism> organisms` хранил ВСЕ когда-либо созданные организмы.
+- 3.5M spawns × ~100 bytes/Organism = 350+ MB утечка!
+
+**Решение:** Заменили список на счётчик:
+```java
+// Было:
+private final List<Organism> organisms = new ArrayList<>();
+organisms.add(child);
+int id = organisms.size();
+
+// Стало:
+private int totalOrganismsCreated = 0;
+totalOrganismsCreated++;
+int id = totalOrganismsCreated;
+```
+
+**Что сохраняется в памяти:**
+- `aliveOrganisms` — только живые (max 5,000)
+- Reaper queue — живые + мёртвые (периодически чистится)
+- `MutationTracker` — все мутации (~100K записей ≈ 5MB)
+
 ---
 
 ## 5. Adam — первый организм
@@ -581,6 +604,7 @@ java -jar proteus.jar info
 - [x] **Reaper Queue Cleanup** — периодическая очистка мёртвых из очереди (lazy deletion)
 - [x] **Heap Monitoring** — мониторинг JVM heap в статистике
 - [x] **OOM Handling** — логирование OutOfMemoryError с диагностикой
+- [x] **Memory Optimization** — заменили `List<Organism> organisms` на счётчик (экономия 100+ bytes/spawn)
 
 ### 🚧 В работе (Stage 4: Persistence)
 - [ ] **PersistenceManager** — H2 MVStore для сохранения состояния
