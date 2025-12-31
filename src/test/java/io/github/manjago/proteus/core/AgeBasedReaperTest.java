@@ -64,13 +64,23 @@ class AgeBasedReaperTest {
         }
         
         @Test
-        @DisplayName("Unregister removes from queue")
-        void unregisterRemoves() {
+        @DisplayName("Unregister uses lazy deletion (organism stays in queue until reaped)")
+        void unregisterUsesLazyDeletion() {
             Organism org = createOrganism(0, -1, 0);
             reaper.register(org);
+            
+            // Kill the organism (simulating death)
+            org.kill();
+            memoryManager.free(org.getStartAddr(), org.getSize());
+            
+            // Unregister - with lazy deletion, still in queue but marked dead
             reaper.unregister(org);
             
+            // getQueueSize() filters dead organisms, so should be 0
             assertEquals(0, reaper.getQueueSize());
+            
+            // But reap() should skip it and return null (no alive organisms)
+            assertNull(reaper.reap());
         }
         
         @Test
