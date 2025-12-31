@@ -364,9 +364,9 @@ public class Simulator {
                     }
                 }
                 
-                // Find parent
+                // Find parent (search only alive organisms - parent must be alive)
                 Organism parent = null;
-                for (Organism o : organisms) {
+                for (Organism o : aliveOrganisms) {
                     if (o.getState() == parentState) {
                         parent = o;
                         break;
