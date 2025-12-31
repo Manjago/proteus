@@ -59,6 +59,10 @@ public class Defragmenter {
     /**
      * Perform defragmentation on the given list of alive organisms.
      * 
+     * Uses two-pass approach:
+     * 1. First pass: validate all organisms can be compacted
+     * 2. Second pass: actually move them (only if first pass succeeds)
+     * 
      * @param aliveOrganisms list of living organisms (will be sorted in place)
      * @return number of organisms that were actually moved
      */
@@ -75,31 +79,38 @@ public class Defragmenter {
         // Sort by current address for stable compaction
         aliveOrganisms.sort(Comparator.comparingInt(Organism::getStartAddr));
         
-        int movedCount = 0;
-        int skippedCount = 0;
-        int nextFreeAddr = 0;
         int soupSize = memoryManager.getTotalMemory();
+        
+        // === PASS 1: Validate that all organisms can fit ===
+        int totalSize = 0;
+        for (Organism org : aliveOrganisms) {
+            int size = org.getSize();
+            int oldAddr = org.getStartAddr();
+            
+            // Skip invalid organisms (they won't be moved)
+            if (size <= 0 || size > 1000 || oldAddr < 0 || oldAddr + size > soupSize) {
+                log.warn("Invalid organism found: id={}, addr={}, size={} - aborting defrag", 
+                        org.getId(), oldAddr, size);
+                return 0;  // Abort - can't safely defragment with invalid organisms
+            }
+            
+            totalSize += size;
+        }
+        
+        // Check if all organisms fit
+        if (totalSize > soupSize) {
+            log.warn("Cannot defragment: total organism size {} exceeds soup size {}", 
+                    totalSize, soupSize);
+            return 0;
+        }
+        
+        // === PASS 2: Actually move organisms ===
+        int movedCount = 0;
+        int nextFreeAddr = 0;
         
         for (Organism org : aliveOrganisms) {
             int oldAddr = org.getStartAddr();
             int size = org.getSize();
-            
-            // Sanity check: skip organisms with invalid size or address
-            if (size <= 0 || size > 1000 || oldAddr < 0 || oldAddr + size > soupSize) {
-                log.warn("Skipping invalid organism in defrag: id={}, addr={}, size={}", 
-                        org.getId(), oldAddr, size);
-                skippedCount++;
-                continue;
-            }
-            
-            // Skip if organism doesn't fit in remaining space
-            // (leave it in place - imperfect compaction but safe)
-            if (nextFreeAddr + size > soupSize) {
-                log.warn("Skipping large organism in defrag: id={}, size={}, nextFreeAddr={}, soupSize={}", 
-                        org.getId(), size, nextFreeAddr, soupSize);
-                skippedCount++;
-                continue;
-            }
             
             if (oldAddr != nextFreeAddr) {
                 // Need to move this organism
@@ -111,13 +122,8 @@ public class Defragmenter {
             nextFreeAddr += size;
         }
         
-        // Only rebuild free list if no organisms were skipped
-        // Otherwise the free list would be corrupted (skipped organisms are still allocated)
-        if (skippedCount == 0) {
-            memoryManager.rebuild(nextFreeAddr);
-        } else {
-            log.warn("Partial defragmentation: skipped {} organisms, not rebuilding free list", skippedCount);
-        }
+        // Safe to rebuild - all organisms were processed
+        memoryManager.rebuild(nextFreeAddr);
         
         defragmentations++;
         totalMoved += movedCount;
