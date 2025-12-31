@@ -179,10 +179,10 @@ class AgeBasedReaperTest {
     class ReapUntilFreeTests {
         
         @Test
-        @DisplayName("ReapUntilFree kills enough to allocate")
+        @DisplayName("ReapUntilFree kills enough to get sufficient total free memory")
         void reapUntilFreeKillsEnough() {
             // Fill memory almost completely: 76 organisms × 13 = 988 cells
-            // Leaves only 12 free cells
+            // Leaves only 12 free cells at the end
             for (int i = 0; i < 76; i++) {
                 Organism org = createOrganism(i, -1, i);
                 reaper.register(org);
@@ -195,15 +195,17 @@ class AgeBasedReaperTest {
             int addr = memoryManager.allocate(100);
             assertEquals(-1, addr); // Should fail
             
-            // Reap until we can allocate 100 (need to kill at least 8 organisms)
+            // Reap until totalFree >= 100 (new logic stops when defrag could help)
             int killed = reaper.reapUntilFree(100);
             
-            assertTrue(killed >= 8, "Should kill at least 8 organisms to free 100+ cells");
-            assertTrue(memoryManager.getLargestFreeBlock() >= 100);
+            // Should kill enough to get totalFree >= 100
+            // With 12 initial free + killed*13 >= 100, need at least 7 kills
+            assertTrue(killed >= 7, "Should kill at least 7 organisms, killed: " + killed);
+            assertTrue(memoryManager.getFreeMemory() >= 100,
+                    "Total free should be >= 100, was: " + memoryManager.getFreeMemory());
             
-            // Now allocation should succeed
-            addr = memoryManager.allocate(100);
-            assertNotEquals(-1, addr);
+            // Note: largestBlock might still be < 100 if blocks don't coalesce,
+            // but defragmentation would consolidate them
         }
         
         @Test
