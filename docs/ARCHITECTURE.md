@@ -263,7 +263,10 @@ public Organism reap() {
 }
 ```
 
-**Результат:** O(n) → O(1) для unregister().
+**Компромисс:**
+- ✅ unregister(): O(n) → O(1)
+- ⚠️ Queue растёт с мёртвыми организмами (память!)
+- 📋 TODO: periodic cleanup для очистки мёртвых
 
 ---
 
@@ -497,8 +500,11 @@ int getMemoryLeak() {
 # Сборка
 mvn clean package
 
-# Запуск симуляции
-java -jar proteus-1.0.0-SNAPSHOT.jar run [options]
+# Запуск через wrapper (рекомендуется)
+./sim.sh [options]
+
+# Или напрямую с лимитом памяти (512MB — VPS-реалистично)
+java -Xmx512m -XX:+UseG1GC -jar target/proteus-1.0.0-SNAPSHOT.jar run [options]
 
 # Опции run:
 #   -c, --cycles         Max cycles (0 = infinite)
@@ -563,8 +569,9 @@ java -jar proteus.jar info
 - [x] Performance: O(1) unregister (lazy deletion)
 - [x] Performance: O(alive) parent search
 
-### 🚧 В работе (Stage 4: Persistence)
+### 🚧 В работе (Stage 4: Cleanup & Persistence)
 
+- [ ] **Reaper Queue Cleanup** — периодическая очистка мёртвых из очереди (lazy deletion накапливает мусор)
 - [ ] **PersistenceManager** — H2 MVStore для сохранения состояния
 - [ ] **EventLogger** — журнал событий (JSON Lines)
 - [ ] **Checkpoints** — периодическое сохранение
