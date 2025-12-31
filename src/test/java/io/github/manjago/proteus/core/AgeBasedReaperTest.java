@@ -220,8 +220,8 @@ class AgeBasedReaperTest {
         }
         
         @Test
-        @DisplayName("ReapUntilFree handles fragmentation")
-        void reapUntilFreeHandlesFragmentation() {
+        @DisplayName("ReapUntilFree stops when total free memory is enough (defrag can help)")
+        void reapUntilFreeStopsWhenTotalFreeEnough() {
             // Use organism size 10 so 1000 divides evenly into 100 organisms
             final int ORG_SIZE = 10;
             
@@ -251,20 +251,38 @@ class AgeBasedReaperTest {
             assertEquals(10, memoryManager.getLargestFreeBlock(), 
                          "Largest block should be 10 (fragmented)");
             
-            // Request 25 cells - impossible without killing contiguous organisms
-            int addr = memoryManager.allocate(25);
-            assertEquals(-1, addr, "Should fail - no block >= 25");
-            
-            // Reap until we can allocate 25
+            // Request 25 cells - with new logic, reaper stops when totalFree >= size
+            // because defragmentation can consolidate the free memory
             int killed = reaper.reapUntilFree(25);
             
-            assertTrue(killed >= 2, "Should kill at least 2 adjacent organisms");
-            assertTrue(memoryManager.getLargestFreeBlock() >= 25,
-                       "Should have freed enough contiguous memory");
+            // Should NOT kill anyone - totalFree (500) >= size (25)
+            assertEquals(0, killed, "Should not kill anyone when totalFree >= size");
             
-            // Now allocation should succeed
-            addr = memoryManager.allocate(25);
-            assertNotEquals(-1, addr, "Should be able to allocate after reaping");
+            // Largest block is still 10, but that's OK - defragmentation will fix it
+            assertEquals(10, memoryManager.getLargestFreeBlock());
+        }
+        
+        @Test
+        @DisplayName("ReapUntilFree kills when total free is insufficient")
+        void reapUntilFreeKillsWhenTotalFreeInsufficient() {
+            // Fill memory completely
+            final int ORG_SIZE = 100;
+            Organism[] orgs = new Organism[10];
+            for (int i = 0; i < 10; i++) {
+                int addr = memoryManager.allocate(ORG_SIZE);
+                orgs[i] = new Organism(i, addr, ORG_SIZE, -1, i);
+                reaper.register(orgs[i]);
+            }
+            
+            assertEquals(0, memoryManager.getFreeMemory());
+            
+            // Request 150 cells - need to kill at least 2 organisms
+            int killed = reaper.reapUntilFree(150);
+            
+            // Should kill enough to get totalFree >= 150
+            assertTrue(killed >= 2, "Should kill at least 2 organisms");
+            assertTrue(memoryManager.getFreeMemory() >= 150, 
+                       "Total free should be at least 150");
         }
     }
     

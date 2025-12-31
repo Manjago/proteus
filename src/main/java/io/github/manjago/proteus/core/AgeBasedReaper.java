@@ -99,9 +99,14 @@ public class AgeBasedReaper implements Reaper {
     public int reapUntilFree(int size) {
         int killed = 0;
         int freedMemory = 0;
+        int maxKills = 100;  // Safety limit to prevent killing everyone
         
         // Keep reaping until we have enough contiguous memory
-        while (memoryManager.getLargestFreeBlock() < size && !queue.isEmpty()) {
+        // OR enough total free memory (defragmentation can help)
+        while (memoryManager.getLargestFreeBlock() < size && 
+               memoryManager.getFreeMemory() < size &&  // Stop if defrag could help
+               !queue.isEmpty() && 
+               killed < maxKills) {
             Organism victim = reap();
             if (victim != null) {
                 killed++;
@@ -112,8 +117,10 @@ public class AgeBasedReaper implements Reaper {
         }
         
         if (killed > 0) {
-            log.debug("Reaped {} organisms to free {} cells (needed {})", 
-                      killed, freedMemory, size);
+            log.debug("Reaped {} organisms to free {} cells (needed {}, largestBlock={}, totalFree={})", 
+                      killed, freedMemory, size, 
+                      memoryManager.getLargestFreeBlock(),
+                      memoryManager.getFreeMemory());
         }
         
         return killed;

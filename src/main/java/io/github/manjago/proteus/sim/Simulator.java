@@ -249,8 +249,19 @@ public class Simulator {
                 
                 int addr = memoryManager.allocate(requestedSize);
                 
+                // Log large allocation requests (might indicate mutated SIZE)
+                if (requestedSize > 50) {
+                    log.debug("Large allocation request: size={}, largest={}", 
+                            requestedSize, memoryManager.getLargestFreeBlock());
+                }
+                
                 // First attempt: try reaping old organisms
                 if (addr == -1) {
+                    log.debug("Allocation failed for size {}, trying reaper (frag={}%, largest={})",
+                            requestedSize, 
+                            String.format("%.1f", memoryManager.getFragmentation() * 100), 
+                            memoryManager.getLargestFreeBlock());
+                    
                     int killed = reaper.reapUntilFree(requestedSize);
                     if (killed > 0) {
                         // Sync aliveOrganisms with actual state
@@ -261,16 +272,27 @@ public class Simulator {
                 }
                 
                 // Second attempt: defragment if fragmented
-                if (addr == -1 && defragmenter.needsDefragmentation(requestedSize, 0.5)) {
-                    int moved = defragmenter.defragment(aliveOrganisms);
-                    if (moved > 0) {
-                        defragmentations++;
-                        addr = memoryManager.allocate(requestedSize);
+                if (addr == -1) {
+                    log.debug("After reaper still failed, checking defrag: frag={}%, largest={}, needed={}",
+                            String.format("%.1f", memoryManager.getFragmentation() * 100), 
+                            memoryManager.getLargestFreeBlock(), requestedSize);
+                    
+                    if (defragmenter.needsDefragmentation(requestedSize, 0.5)) {
+                        log.info("Triggering defragmentation: {} alive organisms", aliveOrganisms.size());
+                        int moved = defragmenter.defragment(aliveOrganisms);
+                        if (moved > 0) {
+                            defragmentations++;
+                            addr = memoryManager.allocate(requestedSize);
+                        }
                     }
                 }
                 
                 if (addr == -1) {
                     failedAllocations++;
+                    log.debug("Allocation ultimately failed: frag={}%, largest={}, free={}",
+                            String.format("%.1f", memoryManager.getFragmentation() * 100),
+                            memoryManager.getLargestFreeBlock(),
+                            memoryManager.getFreeMemory());
                 }
                 
                 return addr;
