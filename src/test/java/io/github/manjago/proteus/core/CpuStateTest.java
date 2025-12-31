@@ -5,6 +5,14 @@ import org.junit.jupiter.api.DisplayName;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests for CpuState (ISA v1.2).
+ * 
+ * In v1.2, CpuState has:
+ * - startAddr: absolute address of organism in memory
+ * - ip: RELATIVE offset from startAddr (not absolute!)
+ * - absoluteIp = startAddr + ip
+ */
 class CpuStateTest {
 
     @Test
@@ -23,18 +31,40 @@ class CpuStateTest {
         CpuState state = new CpuState();
         assertEquals(0, state.getIp());
     }
+    
+    @Test
+    @DisplayName("New state has startAddr at zero")
+    void newStateHasZeroStartAddr() {
+        CpuState state = new CpuState();
+        assertEquals(0, state.getStartAddr());
+    }
 
     @Test
-    @DisplayName("Constructor with initial IP")
-    void constructorWithInitialIp() {
+    @DisplayName("Constructor with startAddr sets startAddr, IP stays 0 (v1.2)")
+    void constructorWithStartAddr() {
         CpuState state = new CpuState(100);
-        assertEquals(100, state.getIp());
+        
+        assertEquals(100, state.getStartAddr());
+        assertEquals(0, state.getIp());  // IP is relative, starts at 0
+        assertEquals(100, state.getAbsoluteIp());  // absolute = startAddr + ip
+    }
+    
+    @Test
+    @DisplayName("getAbsoluteIp returns startAddr + ip (v1.2)")
+    void absoluteIpCalculation() {
+        CpuState state = new CpuState(200);
+        state.setIp(5);
+        
+        assertEquals(200, state.getStartAddr());
+        assertEquals(5, state.getIp());
+        assertEquals(205, state.getAbsoluteIp());
     }
 
     @Test
     @DisplayName("Copy constructor creates independent copy")
     void copyConstructor() {
         CpuState original = new CpuState(50);
+        original.setIp(10);
         original.setRegister(0, 42);
         original.incrementErrors();
         original.incrementAge();
@@ -42,7 +72,8 @@ class CpuStateTest {
         CpuState copy = new CpuState(original);
         
         // Verify copy has same values
-        assertEquals(50, copy.getIp());
+        assertEquals(50, copy.getStartAddr());
+        assertEquals(10, copy.getIp());
         assertEquals(42, copy.getRegister(0));
         assertEquals(1, copy.getErrors());
         assertEquals(1, copy.getAge());
@@ -50,9 +81,11 @@ class CpuStateTest {
         // Modify original, verify copy is independent
         original.setRegister(0, 100);
         original.setIp(200);
+        original.setStartAddr(999);
         
         assertEquals(42, copy.getRegister(0));
-        assertEquals(50, copy.getIp());
+        assertEquals(10, copy.getIp());
+        assertEquals(50, copy.getStartAddr());
     }
 
     @Test
@@ -69,15 +102,32 @@ class CpuStateTest {
     }
 
     @Test
-    @DisplayName("advanceIp increments IP by 1")
+    @DisplayName("advanceIp increments relative IP by 1")
     void advanceIp() {
-        CpuState state = new CpuState(10);
+        CpuState state = new CpuState(100);  // startAddr=100
+        
+        assertEquals(0, state.getIp());
         
         state.advanceIp();
-        assertEquals(11, state.getIp());
+        assertEquals(1, state.getIp());
+        assertEquals(101, state.getAbsoluteIp());
         
         state.advanceIp();
-        assertEquals(12, state.getIp());
+        assertEquals(2, state.getIp());
+        assertEquals(102, state.getAbsoluteIp());
+    }
+    
+    @Test
+    @DisplayName("jumpRelative adds offset to IP (v1.2)")
+    void jumpRelative() {
+        CpuState state = new CpuState(100);
+        state.setIp(10);
+        
+        state.jumpRelative(5);
+        assertEquals(15, state.getIp());
+        
+        state.jumpRelative(-10);
+        assertEquals(5, state.getIp());
     }
 
     @Test
@@ -114,9 +164,10 @@ class CpuStateTest {
     }
 
     @Test
-    @DisplayName("Reset clears everything")
+    @DisplayName("Reset clears IP, errors, age but preserves startAddr")
     void resetClearsEverything() {
         CpuState state = new CpuState(100);
+        state.setIp(50);
         state.setRegister(0, 42);
         state.setRegister(7, 99);
         state.incrementErrors();
@@ -130,12 +181,15 @@ class CpuStateTest {
         for (int i = 0; i < CpuState.REGISTER_COUNT; i++) {
             assertEquals(0, state.getRegister(i));
         }
+        // startAddr is preserved
+        assertEquals(100, state.getStartAddr());
     }
 
     @Test
     @DisplayName("clearRegisters only clears registers")
     void clearRegistersOnly() {
         CpuState state = new CpuState(100);
+        state.setIp(20);
         state.setRegister(0, 42);
         state.incrementErrors();
         state.incrementAge();
@@ -146,20 +200,39 @@ class CpuStateTest {
         assertEquals(0, state.getRegister(0));
         
         // Other state preserved
-        assertEquals(100, state.getIp());
+        assertEquals(20, state.getIp());
+        assertEquals(100, state.getStartAddr());
         assertEquals(1, state.getErrors());
         assertEquals(1, state.getAge());
     }
 
     @Test
-    @DisplayName("toString produces readable output")
+    @DisplayName("toString shows startAddr and both IPs (v1.2)")
     void toStringReadable() {
-        CpuState state = new CpuState(0x1234);
+        CpuState state = new CpuState(100);
+        state.setIp(5);
         state.setRegister(0, 42);
         
         String str = state.toString();
         
-        assertTrue(str.contains("1234")); // IP in hex
+        assertTrue(str.contains("startAddr=100"));
+        assertTrue(str.contains("IP=5"));
+        assertTrue(str.contains("abs=105"));
         assertTrue(str.contains("42"));   // R0 value
+    }
+    
+    @Test
+    @DisplayName("setStartAddr works for defragmentation (v1.2)")
+    void setStartAddrForDefrag() {
+        CpuState state = new CpuState(100);
+        state.setIp(5);
+        
+        // Simulate defragmentation: move organism to new address
+        state.setStartAddr(500);
+        
+        // IP stays the same (relative), but absolute changes
+        assertEquals(5, state.getIp());
+        assertEquals(500, state.getStartAddr());
+        assertEquals(505, state.getAbsoluteIp());
     }
 }
