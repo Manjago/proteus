@@ -293,12 +293,22 @@ public final class VirtualCPU {
      */
     private ExecutionResult executeAllocate(int r1, int r2, CpuState state) {
         int requestedSize = state.getRegister(r1);
+        
+        // If there's already a pending allocation, free it first (prevents leak)
+        if (state.hasPendingAllocation()) {
+            log.debug("ALLOCATE while pending exists - freeing old allocation: {} cells at addr {}",
+                    state.getPendingAllocSize(), state.getPendingAllocAddr());
+            syscallHandler.freePending(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            state.clearPendingAllocation();
+        }
+        
         int allocatedAddr = syscallHandler.allocate(requestedSize);
         state.setRegister(r2, allocatedAddr);
         
         // Track pending allocation for cleanup if organism dies before SPAWN
         if (allocatedAddr >= 0) {
             state.setPendingAllocation(allocatedAddr, requestedSize);
+            log.trace("ALLOCATE: {} cells at addr {}", requestedSize, allocatedAddr);
         }
         
         state.advanceIp();

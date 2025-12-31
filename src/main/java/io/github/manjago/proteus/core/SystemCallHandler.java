@@ -27,6 +27,17 @@ public interface SystemCallHandler {
     boolean spawn(int address, int size, CpuState parentState);
     
     /**
+     * Free a pending allocation (when ALLOCATE is called again before SPAWN).
+     * Default implementation does nothing (for backward compatibility).
+     * 
+     * @param address address of the pending allocation
+     * @param size size of the pending allocation
+     */
+    default void freePending(int address, int size) {
+        // Default: no-op for backward compatibility
+    }
+    
+    /**
      * Default no-op handler that fails all system calls.
      * Useful for testing basic CPU operations.
      */

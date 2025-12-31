@@ -314,29 +314,41 @@ public class Simulator {
                 int pendingAddr = parentState.getPendingAllocAddr();
                 int pendingSize = parentState.getPendingAllocSize();
                 
-                // Validate size (must be positive and reasonable)
-                if (size <= 0 || size > 1000) {
+                // If no valid pending allocation, spawn fails
+                // (ALLOCATE must succeed before SPAWN can work)
+                if (pendingAddr < 0 || pendingSize <= 0) {
                     rejectedSpawns++;
-                    // Free pending allocation if valid
-                    if (pendingAddr >= 0 && pendingSize > 0) {
-                        memoryManager.free(pendingAddr, pendingSize);
-                    }
                     return false;
                 }
-                // Validate address (must be valid, not -1 from failed allocation)
-                if (address < 0) {
+                
+                // Validate that spawn parameters match pending allocation
+                // This prevents memory corruption from mutated registers
+                if (address != pendingAddr) {
                     rejectedSpawns++;
-                    // No memory to free - allocation failed
+                    // Free the pending allocation since it won't be used
+                    memoryManager.free(pendingAddr, pendingSize);
+                    log.debug("Spawn rejected: address mismatch (spawn={}, pending={})", address, pendingAddr);
                     return false;
                 }
-                if (address + size > config.soupSize()) {
+                
+                // Use pendingSize for the organism, not the potentially mutated size
+                // This ensures we track the actual allocated memory
+                int actualSize = pendingSize;
+                
+                // Validate size is reasonable
+                if (actualSize <= 0 || actualSize > 1000) {
                     rejectedSpawns++;
-                    // Free pending allocation if valid
-                    if (pendingAddr >= 0 && pendingSize > 0) {
-                        memoryManager.free(pendingAddr, pendingSize);
-                    }
+                    memoryManager.free(pendingAddr, pendingSize);
                     return false;
                 }
+                
+                // Check bounds
+                if (address + actualSize > config.soupSize()) {
+                    rejectedSpawns++;
+                    memoryManager.free(pendingAddr, pendingSize);
+                    return false;
+                }
+                
                 // Check population limit
                 if (aliveCount >= config.maxOrganisms()) {
                     // Too many organisms - trigger reaper to make room
@@ -347,11 +359,8 @@ public class Simulator {
                     }
                     if (aliveCount >= config.maxOrganisms()) {
                         rejectedSpawns++;
-                        // Free pending allocation
-                        if (pendingAddr >= 0 && pendingSize > 0) {
-                            memoryManager.free(pendingAddr, pendingSize);
-                        }
-                        return false; // Still full, reject spawn
+                        memoryManager.free(pendingAddr, pendingSize);
+                        return false;
                     }
                 }
                 
@@ -366,10 +375,11 @@ public class Simulator {
                 
                 int parentId = parent != null ? parent.getId() : -1;
                 
+                // Use actualSize (from pending allocation) not size (potentially mutated)
                 Organism child = new Organism(
                     organisms.size(),
                     address,
-                    size,
+                    actualSize,
                     parentId,
                     totalCycles
                 );
@@ -380,10 +390,18 @@ public class Simulator {
                 maxAlive = Math.max(maxAlive, aliveCount);
                 totalSpawns++;
                 
-                log.debug("Spawn: {} (parent: {})", child.getId(), parentId);
+                log.debug("Spawn: {} (parent: {}, size: {})", child.getId(), parentId, actualSize);
                 listener.onSpawn(child, parent, totalCycles);
                 
                 return true;
+            }
+            
+            @Override
+            public void freePending(int address, int size) {
+                if (address >= 0 && size > 0 && address + size <= config.soupSize()) {
+                    memoryManager.free(address, size);
+                    log.debug("Freed pending allocation: {} cells at addr {}", size, address);
+                }
             }
         };
     }
