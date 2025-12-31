@@ -69,8 +69,10 @@ public class RunCommand implements Callable<Integer> {
         }));
         
         // Set listener for console output
+        ConsoleProgressListener progressListener = null;
         if (!quiet) {
-            simulator.setListener(new ConsoleProgressListener());
+            progressListener = new ConsoleProgressListener();
+            simulator.setListener(progressListener);
         }
         
         // Seed Adam
@@ -87,6 +89,11 @@ public class RunCommand implements Callable<Integer> {
         long startTime = System.currentTimeMillis();
         simulator.run(maxCycles != null ? maxCycles : 0);
         long elapsed = System.currentTimeMillis() - startTime;
+        
+        // Clear progress line before final report
+        if (progressListener != null) {
+            progressListener.finish();
+        }
         
         // Final report
         if (!quiet) {
@@ -202,30 +209,57 @@ public class RunCommand implements Callable<Integer> {
     }
     
     /**
-     * Console progress listener with live updates.
+     * Console progress listener with live single-line updates.
      */
     private static class ConsoleProgressListener implements SimulatorListener {
         private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+        private static final String CLEAR_LINE = "\r\033[K"; // ANSI: carriage return + clear to end
         private int spinnerIdx = 0;
+        private boolean needsClear = false;
+        private final long startTime = System.currentTimeMillis();
         
         @Override
         public void onProgress(SimulatorStats stats) {
             String spinner = SPINNER[spinnerIdx++ % SPINNER.length];
+            long elapsed = System.currentTimeMillis() - startTime;
+            String time = formatElapsed(elapsed);
             
-            // Compact one-line progress
-            System.out.printf("\r%s Cycle %,d  |  👥 %d alive  |  🐣 %d spawns  |  💀 %d deaths  |  🧬 %d mutations   ",
+            // Clear line and print progress (no newline)
+            System.out.print(CLEAR_LINE);
+            System.out.printf("%s [%s] Cycle %,d  |  👥 %d  |  🐣 %d  |  💀 %d  |  🧬 %d",
                     spinner,
+                    time,
                     stats.totalCycles(),
                     stats.aliveCount(),
                     stats.totalSpawns(),
                     stats.deathsByErrors() + stats.deathsByReaper(),
                     stats.totalMutations());
             System.out.flush();
+            needsClear = true;
+        }
+        
+        private String formatElapsed(long ms) {
+            long seconds = ms / 1000;
+            if (seconds < 60) {
+                return String.format("%ds", seconds);
+            } else {
+                return String.format("%dm%02ds", seconds / 60, seconds % 60);
+            }
         }
         
         @Override
         public void onCheckpoint(long cycle) {
-            System.out.printf("%n💾 Checkpoint at cycle %,d%n", cycle);
+            // Checkpoints logged to file, not console (keeps display clean)
+        }
+        
+        /**
+         * Clear the progress line before final output.
+         */
+        public void finish() {
+            if (needsClear) {
+                System.out.print(CLEAR_LINE);
+                System.out.flush();
+            }
         }
     }
 }
