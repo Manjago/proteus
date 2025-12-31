@@ -52,16 +52,27 @@ public class Simulator {
     // Event listener
     private SimulatorListener listener = SimulatorListener.NOOP;
     
+    // Random seed used (for reproducibility logging)
+    private final long actualSeed;
+    
     public Simulator(SimulatorConfig config) {
         this.config = config;
+        this.actualSeed = config.effectiveSeed();
         this.soup = new AtomicIntegerArray(config.soupSize());
         this.memoryManager = new FreeListMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
-        this.cpu = new VirtualCPU(config.mutationRate(), new Random(), createHandler());
+        this.cpu = new VirtualCPU(config.mutationRate(), new Random(actualSeed), createHandler());
         this.cpu.setMutationTracker(mutationTracker);
         
-        log.info("Simulator created with config:\n{}", config);
+        log.info("Simulator created (seed: {})", actualSeed);
+    }
+    
+    /**
+     * Get the actual random seed used (useful for reproducing runs).
+     */
+    public long getActualSeed() {
+        return actualSeed;
     }
     
     /**

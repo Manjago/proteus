@@ -17,6 +17,7 @@ public record SimulatorConfig(
     
     // Mutation
     double mutationRate,
+    long randomSeed,          // 0 = use current time
     
     // Reaper
     String reaperStrategy,
@@ -59,6 +60,7 @@ public record SimulatorConfig(
         return new SimulatorConfig(
             c.getInt("soup.size"),
             c.getDouble("mutation.rate"),
+            c.getLong("mutation.seed"),
             c.getString("reaper.strategy"),
             c.getInt("reaper.max-errors"),
             c.getLong("limits.max-cycles"),
@@ -70,6 +72,13 @@ public record SimulatorConfig(
     }
     
     /**
+     * Get effective random seed (use current time if 0).
+     */
+    public long effectiveSeed() {
+        return randomSeed == 0 ? System.currentTimeMillis() : randomSeed;
+    }
+    
+    /**
      * Builder for programmatic configuration.
      */
     public static Builder builder() {
@@ -78,7 +87,8 @@ public record SimulatorConfig(
     
     public static class Builder {
         private int soupSize = 10_000;
-        private double mutationRate = 0.001;
+        private double mutationRate = 0.002;  // 0.2% default
+        private long randomSeed = 0;
         private String reaperStrategy = "age-based";
         private int maxErrors = 100;
         private long maxCycles = 0;
@@ -89,6 +99,7 @@ public record SimulatorConfig(
         
         public Builder soupSize(int size) { this.soupSize = size; return this; }
         public Builder mutationRate(double rate) { this.mutationRate = rate; return this; }
+        public Builder randomSeed(long seed) { this.randomSeed = seed; return this; }
         public Builder reaperStrategy(String strategy) { this.reaperStrategy = strategy; return this; }
         public Builder maxErrors(int max) { this.maxErrors = max; return this; }
         public Builder maxCycles(long max) { this.maxCycles = max; return this; }
@@ -99,7 +110,7 @@ public record SimulatorConfig(
         
         public SimulatorConfig build() {
             return new SimulatorConfig(
-                soupSize, mutationRate, reaperStrategy, maxErrors,
+                soupSize, mutationRate, randomSeed, reaperStrategy, maxErrors,
                 maxCycles, maxOrganisms, dataFile, checkpointInterval, reportInterval
             );
         }
@@ -111,6 +122,7 @@ public record SimulatorConfig(
             SimulatorConfig:
               soup.size:              %,d
               mutation.rate:          %.4f (%.2f%%)
+              mutation.seed:          %s
               reaper.strategy:        %s
               reaper.max-errors:      %d
               limits.max-cycles:      %s
@@ -121,6 +133,7 @@ public record SimulatorConfig(
             """,
             soupSize,
             mutationRate, mutationRate * 100,
+            randomSeed == 0 ? "random" : String.valueOf(randomSeed),
             reaperStrategy,
             maxErrors,
             maxCycles == 0 ? "infinite" : String.format("%,d", maxCycles),

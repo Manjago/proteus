@@ -37,6 +37,9 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = {"-m", "--mutation-rate"}, description = "Mutation rate (0.0-1.0)")
     private Double mutationRate;
     
+    @Option(names = {"--seed"}, description = "Random seed for reproducibility (0 = random)")
+    private Long randomSeed;
+    
     @Option(names = {"-o", "--output"}, description = "Output file for state")
     private Path outputFile;
     
@@ -130,6 +133,7 @@ public class RunCommand implements Callable<Integer> {
             builder = SimulatorConfig.builder()
                     .soupSize(base.soupSize())
                     .mutationRate(base.mutationRate())
+                    .randomSeed(base.randomSeed())
                     .reaperStrategy(base.reaperStrategy())
                     .maxErrors(base.maxErrors())
                     .maxCycles(base.maxCycles())
@@ -145,6 +149,7 @@ public class RunCommand implements Callable<Integer> {
         // Override from CLI options
         if (soupSize != null) builder.soupSize(soupSize);
         if (mutationRate != null) builder.mutationRate(mutationRate);
+        if (randomSeed != null) builder.randomSeed(randomSeed);
         if (maxCycles != null) builder.maxCycles(maxCycles);
         if (outputFile != null) builder.dataFile(outputFile);
         if (reportInterval != null) builder.reportInterval(reportInterval);
@@ -191,6 +196,11 @@ public class RunCommand implements Callable<Integer> {
                 stats.totalMutations(), stats.mutationsPerSpawn());
         System.out.printf("   Reproduction rate: %.1f cycles/spawn%n",
                 stats.cyclesPerSpawn());
+        System.out.println();
+        
+        // Reproducibility
+        System.out.printf("🔑 Seed: %d (use --seed %d to reproduce)%n", 
+                simulator.getActualSeed(), simulator.getActualSeed());
         
         System.out.println();
         System.out.println("═══════════════════════════════════════");
