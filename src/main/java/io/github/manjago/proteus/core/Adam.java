@@ -1,72 +1,85 @@
 package io.github.manjago.proteus.core;
 
 /**
- * Adam - the first self-replicating organism.
+ * Adam v3 - the first self-replicating organism (ISA v1.2).
  * 
  * This is the "ancestor" from which all other organisms will evolve.
- * Adam's genome contains the minimal code needed to:
- * 1. Load constants (SIZE, COPY_LOOP address)
- * 2. Allocate memory for offspring
- * 3. Copy itself to the new location
- * 4. Spawn the offspring
- * 5. Reset and repeat forever
  * 
- * With MOVI instruction, Adam is only 13 instructions!
+ * <h2>v3 Changes (Position-Independent Code):</h2>
+ * <ul>
+ *   <li>Uses GETADDR to get absolute start address</li>
+ *   <li>Uses relative JMP offsets instead of absolute addresses</li>
+ *   <li>Works correctly from any memory location</li>
+ *   <li>Can be safely defragmented (moved in memory)</li>
+ * </ul>
  * 
- * Register conventions:
- * - R0: source pointer (starts at 0)
- * - R1: destination pointer
- * - R2: copy counter
- * - R3: child address (from ALLOCATE)
- * - R4: genome size (SIZE)
- * - R5: copy loop address (COPY_LOOP)
- * - R6: start address (always 0, never modified)
- * - R7: unused
+ * <h2>Register Usage:</h2>
+ * <ul>
+ *   <li>R0: counter (0 to size-1)</li>
+ *   <li>R3: child absolute address (from ALLOCATE)</li>
+ *   <li>R4: genome size (SIZE = 14)</li>
+ *   <li>R5: source pointer (absolute, incremented)</li>
+ *   <li>R6: destination pointer (absolute, incremented)</li>
+ *   <li>R7: my absolute start address (from GETADDR)</li>
+ * </ul>
  */
 public final class Adam {
     
     /** Adam's genome size in instructions */
-    public static final int SIZE = 13;
-    
-    /** Address of the copy loop within Adam's genome */
-    public static final int COPY_LOOP = 5;
+    public static final int SIZE = 14;
     
     private Adam() {}
     
     /**
-     * Build Adam's genome.
+     * Build Adam's genome (v3, Position-Independent).
      * 
-     * Layout:
-     * [0]:    MOVI R4, 13      ; R4 = SIZE
-     * [1]:    MOVI R5, 5       ; R5 = COPY_LOOP address
-     * [2]:    ALLOCATE R4, R3  ; Allocate SIZE cells, address in R3
-     * [3]:    MOV R1, R3       ; R1 = destination pointer
-     * [4]:    MOV R2, R4       ; R2 = copy counter
-     * [5]:    COPY R0, R1      ; copy_loop: memory[R1] = memory[R0]
-     * [6]:    INC R0           ; R0++
-     * [7]:    INC R1           ; R1++
-     * [8]:    DEC R2           ; R2--
-     * [9]:    JMPN R2, R5      ; if R2 != 0, goto copy_loop
-     * [10]:   SPAWN R3, R4     ; Create child organism
-     * [11]:   SUB R0, R0       ; Reset R0 = 0 for next cycle
-     * [12]:   JMP R6           ; Jump to start (R6 = 0)
+     * <pre>
+     * 0:  MOVI R4, 14      ; R4 = genome size
+     * 1:  GETADDR R7       ; R7 = my absolute start address
+     * 2:  ALLOCATE R4, R3  ; R3 = child's absolute address
+     * 
+     * ; Prepare pointers
+     * 3:  MOV R5, R7       ; R5 = src pointer (my start)
+     * 4:  MOV R6, R3       ; R6 = dst pointer (child start)
+     * 5:  MOVI R0, 0       ; R0 = counter
+     * 
+     * ; copy_loop (starts at IP=6):
+     * 6:  COPY R5, R6      ; memory[R6] = memory[R5] (may mutate!)
+     * 7:  INC R5           ; src++
+     * 8:  INC R6           ; dst++
+     * 9:  INC R0           ; counter++
+     * 10: JMPN R0, R4, -5  ; if (R0 < R4) goto 6
+     * 
+     * 11: SPAWN R3, R4     ; Create child organism
+     * 12: MOVI R0, 0       ; Reset counter
+     * 13: JMP -12          ; goto 2 (ALLOCATE)
+     * </pre>
+     * 
+     * Jump calculation: JMP -12 at IP=13 → advanceIp → IP=14 → jumpRelative(-12) → IP=2
      */
     public static int[] genome() {
         return GenomeBuilder.create()
-            .movi(4, SIZE)          // 0: R4 = SIZE (13)
-            .movi(5, COPY_LOOP)     // 1: R5 = COPY_LOOP (5)
-            .allocate(4, 3)         // 2: Allocate R4 cells, addr in R3
-            .mov(1, 3)              // 3: R1 = child address
-            .mov(2, 4)              // 4: R2 = counter
-            // copy_loop (address 5):
-            .copy(0, 1)             // 5: memory[R1] = memory[R0]
-            .inc(0)                 // 6: R0++
-            .inc(1)                 // 7: R1++
-            .dec(2)                 // 8: R2--
-            .jmpn(2, 5)             // 9: if R2 != 0, goto copy_loop
-            .spawn(3, 4)            // 10: Spawn child
-            .sub(0, 0)              // 11: Reset R0 = 0
-            .jmp(6)                 // 12: Jump to start (R6 = 0)
+            // Constants and setup
+            .movi(4, SIZE)          // 0: R4 = SIZE (14)
+            .getaddr(7)             // 1: R7 = my start address
+            .allocate(4, 3)         // 2: R3 = child address
+            
+            // Prepare pointers
+            .mov(5, 7)              // 3: R5 = R7 (src pointer)
+            .mov(6, 3)              // 4: R6 = R3 (dst pointer)
+            .movi(0, 0)             // 5: R0 = 0 (counter)
+            
+            // copy_loop (address 6):
+            .copy(5, 6)             // 6: memory[R6] = memory[R5]
+            .inc(5)                 // 7: src++
+            .inc(6)                 // 8: dst++
+            .inc(0)                 // 9: counter++
+            .jmpn(0, 4, -5)         // 10: if R0 < R4, jump to 6
+            
+            // Spawn and repeat
+            .spawn(3, 4)            // 11: Spawn child
+            .movi(0, 0)             // 12: Reset counter
+            .jmp(-12)               // 13: Jump to 2 (ALLOCATE)
             .build();
     }
     
@@ -88,17 +101,15 @@ public final class Adam {
      * Print Adam's genome for debugging.
      */
     public static void main(String[] args) {
-        System.out.println("=== ADAM: The First Self-Replicator ===");
+        System.out.println("=== ADAM v3: Position-Independent Self-Replicator ===");
         System.out.println("Size: " + size() + " instructions\n");
         System.out.println(disassemble());
         System.out.println("\n=== Register Usage ===");
-        System.out.println("R0: source pointer (starts at 0)");
-        System.out.println("R1: destination pointer");
-        System.out.println("R2: copy counter");
+        System.out.println("R0: counter (0 to size-1)");
         System.out.println("R3: child address (from ALLOCATE)");
         System.out.println("R4: genome size (" + SIZE + ")");
-        System.out.println("R5: copy loop address (" + COPY_LOOP + ")");
-        System.out.println("R6: start address (0)");
-        System.out.println("R7: unused");
+        System.out.println("R5: source pointer (absolute, incremented)");
+        System.out.println("R6: destination pointer (absolute, incremented)");
+        System.out.println("R7: my start address (from GETADDR)");
     }
 }

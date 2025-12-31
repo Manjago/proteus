@@ -9,10 +9,18 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import static io.github.manjago.proteus.core.OpCode.*;
 
 /**
- * Virtual CPU interpreter for Proteus ISA v1.0
+ * Virtual CPU interpreter for Proteus ISA v1.2
  * 
  * Executes instructions from shared memory ("soup").
  * Each organism has its own CpuState but shares the memory.
+ * 
+ * <h2>v1.2 Changes:</h2>
+ * <ul>
+ *   <li>IP is now relative (absolute = startAddr + IP)</li>
+ *   <li>JMP/JMPZ/JMPN use IP-relative offsets encoded in instruction</li>
+ *   <li>LOAD/STORE use startAddr-relative addressing</li>
+ *   <li>Added GETADDR instruction</li>
+ * </ul>
  */
 public final class VirtualCPU {
     
@@ -55,22 +63,23 @@ public final class VirtualCPU {
     }
     
     /**
-     * Execute a single instruction.
+     * Execute a single instruction (ISA v1.2).
      * 
      * @param state CPU state of the organism
      * @param memory shared memory ("soup")
      * @return execution result
      */
     public ExecutionResult execute(CpuState state, AtomicIntegerArray memory) {
-        int ip = state.getIp();
+        // v1.2: Use absolute IP for memory access
+        int absoluteIp = state.getAbsoluteIp();
         
         // Bounds check for IP
-        if (ip < 0 || ip >= memory.length()) {
+        if (absoluteIp < 0 || absoluteIp >= memory.length()) {
             state.incrementErrors();
             return ExecutionResult.ERROR_IP_OUT_OF_BOUNDS;
         }
         
-        int instruction = memory.get(ip);
+        int instruction = memory.get(absoluteIp);
         OpCode op = decodeOpCode(instruction);
         
         if (op == null) {
@@ -112,6 +121,13 @@ public final class VirtualCPU {
                 return ExecutionResult.OK;
             }
             
+            // v1.2: GETADDR - get organism's absolute start address
+            case GETADDR -> {
+                state.setRegister(r1, state.getStartAddr());
+                state.advanceIp();
+                return ExecutionResult.OK;
+            }
+            
             case ADD -> {
                 int a = state.getRegister(r1);
                 int b = state.getRegister(r2);
@@ -140,8 +156,10 @@ public final class VirtualCPU {
                 return ExecutionResult.OK;
             }
             
+            // v1.2: LOAD - startAddr-relative addressing
             case LOAD -> {
-                int addr = state.getRegister(r2);
+                int offset = state.getRegister(r2);
+                int addr = state.getStartAddr() + offset;  // v1.2: relative!
                 if (addr < 0 || addr >= memory.length()) {
                     state.incrementErrors();
                     state.advanceIp();
@@ -152,8 +170,10 @@ public final class VirtualCPU {
                 return ExecutionResult.OK;
             }
             
+            // v1.2: STORE - startAddr-relative addressing
             case STORE -> {
-                int addr = state.getRegister(r1);
+                int offset = state.getRegister(r1);
+                int addr = state.getStartAddr() + offset;  // v1.2: relative!
                 if (addr < 0 || addr >= memory.length()) {
                     state.incrementErrors();
                     state.advanceIp();
@@ -164,29 +184,41 @@ public final class VirtualCPU {
                 return ExecutionResult.OK;
             }
             
+            // v1.2: JMP - IP-relative jump
             case JMP -> {
-                state.setIp(state.getRegister(r1));
+                int offset = decodeOffset(instruction);
+                state.advanceIp();  // First advance past this instruction
+                state.jumpRelative(offset);  // Then apply offset
                 return ExecutionResult.OK;
             }
             
+            // v1.2: JMPZ - IP-relative jump if R_cond == 0
             case JMPZ -> {
                 if (state.getRegister(r1) == 0) {
-                    state.setIp(state.getRegister(r2));
+                    int offset = decodeOffset(instruction);
+                    state.advanceIp();
+                    state.jumpRelative(offset);
                 } else {
                     state.advanceIp();
                 }
                 return ExecutionResult.OK;
             }
             
+            // v1.2: JMPN - IP-relative jump if R_a < R_b
             case JMPN -> {
-                if (state.getRegister(r1) != 0) {
-                    state.setIp(state.getRegister(r2));
+                int a = state.getRegister(r1);
+                int b = state.getRegister(r2);
+                if (a < b) {
+                    int offset = decodeOffset(instruction);
+                    state.advanceIp();
+                    state.jumpRelative(offset);
                 } else {
                     state.advanceIp();
                 }
                 return ExecutionResult.OK;
             }
             
+            // COPY uses absolute addresses (for writing to child)
             case COPY -> {
                 return executeCopy(r1, r2, state, memory);
             }

@@ -153,7 +153,7 @@ class AdamTest {
         
         // Should be back at IP=0 after completing one replication cycle
         assertEquals(0, state.getIp(), "Should loop back to start");
-        assertTrue(state.getAge() > 50, "Should have executed many instructions");
+        assertTrue(state.getAge() > 100, "Should have executed many instructions");
         
         System.out.println("Adam completed one full cycle in " + state.getAge() + " instructions");
     }

@@ -58,6 +58,15 @@ public final class GenomeBuilder {
         return this;
     }
     
+    /**
+     * GETADDR - load organism's absolute start address into register (v1.2).
+     * @param dst destination register (0-7)
+     */
+    public GenomeBuilder getaddr(int dst) {
+        instructions.add(encode(GETADDR, dst));
+        return this;
+    }
+    
     // ========== Arithmetic ==========
     
     public GenomeBuilder add(int a, int b) {
@@ -92,20 +101,35 @@ public final class GenomeBuilder {
         return this;
     }
     
-    // ========== Control Flow ==========
+    // ========== Control Flow (v1.2: IP-relative) ==========
     
-    public GenomeBuilder jmp(int addrReg) {
-        instructions.add(encode(JMP, addrReg));
+    /**
+     * JMP - relative jump (v1.2).
+     * @param offset signed offset from current IP (-131,072 to +131,071)
+     */
+    public GenomeBuilder jmp(int offset) {
+        instructions.add(encodeJump(offset));
         return this;
     }
     
-    public GenomeBuilder jmpz(int condReg, int addrReg) {
-        instructions.add(encode(JMPZ, condReg, addrReg));
+    /**
+     * JMPZ - relative jump if register is zero (v1.2).
+     * @param condReg condition register (jump if == 0)
+     * @param offset signed offset from current IP
+     */
+    public GenomeBuilder jmpz(int condReg, int offset) {
+        instructions.add(encodeJumpZero(condReg, offset));
         return this;
     }
     
-    public GenomeBuilder jmpn(int condReg, int addrReg) {
-        instructions.add(encode(JMPN, condReg, addrReg));
+    /**
+     * JMPN - relative jump if R_a < R_b (v1.2).
+     * @param rA first register
+     * @param rB second register 
+     * @param offset signed offset from current IP (jump if rA < rB)
+     */
+    public GenomeBuilder jmpn(int rA, int rB, int offset) {
+        instructions.add(encodeJumpLess(rA, rB, offset));
         return this;
     }
     

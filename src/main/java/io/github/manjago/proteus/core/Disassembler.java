@@ -3,7 +3,7 @@ package io.github.manjago.proteus.core;
 import static io.github.manjago.proteus.core.OpCode.*;
 
 /**
- * Disassembler for Proteus ISA v1.0
+ * Disassembler for Proteus ISA v1.2 (Position-Independent Code)
  * 
  * Converts machine code (int[]) to human-readable assembly text.
  */
@@ -17,7 +17,7 @@ public final class Disassembler {
      * Disassemble a single instruction to mnemonic form.
      * 
      * @param instruction encoded 32-bit instruction
-     * @return assembly string like "MOV R3, R5" or "NOP"
+     * @return assembly string like "MOV R3, R5" or "JMP -5"
      */
     public static String disassemble(int instruction) {
         OpCode op = decodeOpCode(instruction);
@@ -38,25 +38,39 @@ public final class Disassembler {
             // 1 operand with immediate
             case MOVI -> String.format("MOVI R%d, %d", r1, decodeImmediate(instruction));
             
-            // 1 operand
+            // 1 operand (v1.2)
+            case GETADDR -> String.format("GETADDR R%d", r1);
             case INC -> String.format("INC R%d", r1);
             case DEC -> String.format("DEC R%d", r1);
-            case JMP -> String.format("JMP [R%d]", r1);
+            
+            // v1.2: JMP with relative offset
+            case JMP -> {
+                int offset = decodeOffset(instruction);
+                yield String.format("JMP %+d", offset);
+            }
             
             // 2 operands - register to register
             case MOV -> String.format("MOV R%d, R%d", r1, r2);
             case ADD -> String.format("ADD R%d, R%d", r1, r2);
             case SUB -> String.format("SUB R%d, R%d", r1, r2);
             
-            // 2 operands - memory operations
+            // 2 operands - memory operations (v1.2: startAddr-relative)
             case LOAD  -> String.format("LOAD R%d, [R%d]", r1, r2);
             case STORE -> String.format("STORE [R%d], R%d", r1, r2);
             
-            // 2 operands - conditional jumps
-            case JMPZ -> String.format("JMPZ R%d, [R%d]", r1, r2);
-            case JMPN -> String.format("JMPN R%d, [R%d]", r1, r2);
+            // v1.2: JMPZ with R_cond and relative offset
+            case JMPZ -> {
+                int offset = decodeOffset(instruction);
+                yield String.format("JMPZ R%d, %+d", r1, offset);
+            }
             
-            // 2 operands - system calls
+            // v1.2: JMPN with R_a, R_b and relative offset (jump if R_a < R_b)
+            case JMPN -> {
+                int offset = decodeOffset(instruction);
+                yield String.format("JMPN R%d, R%d, %+d", r1, r2, offset);
+            }
+            
+            // 2 operands - system calls (absolute addresses)
             case COPY     -> String.format("COPY [R%d], [R%d]", r1, r2);
             case ALLOCATE -> String.format("ALLOCATE R%d, R%d", r1, r2);
             case SPAWN    -> String.format("SPAWN R%d, R%d", r1, r2);
