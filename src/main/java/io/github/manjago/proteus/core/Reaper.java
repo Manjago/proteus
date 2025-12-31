@@ -64,4 +64,24 @@ public interface Reaper {
      * @return oldest age, or 0 if queue is empty
      */
     int getOldestAge();
+    
+    /**
+     * Get raw queue size including dead organisms (for lazy deletion implementations).
+     * Used to monitor memory pressure.
+     * 
+     * @return raw queue size
+     */
+    default int getRawQueueSize() {
+        return getQueueSize();  // Default: same as alive count
+    }
+    
+    /**
+     * Clean up dead organisms from internal data structures.
+     * Called periodically to prevent memory accumulation from lazy deletion.
+     * 
+     * @return number of dead organisms removed
+     */
+    default int cleanup() {
+        return 0;  // Default: no-op for non-lazy implementations
+    }
 }

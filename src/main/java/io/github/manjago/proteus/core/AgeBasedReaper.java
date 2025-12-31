@@ -142,6 +142,36 @@ public class AgeBasedReaper implements Reaper {
         return (int) queue.stream().filter(Organism::isAlive).count();
     }
     
+    /**
+     * Get raw queue size including dead organisms.
+     * Used to monitor memory pressure from lazy deletion.
+     */
+    public int getRawQueueSize() {
+        return queue.size();
+    }
+    
+    /**
+     * Clean up dead organisms from the queue.
+     * This is necessary because lazy deletion accumulates dead organisms.
+     * 
+     * Should be called periodically (e.g., every N cycles) to prevent OOM.
+     * 
+     * @return number of dead organisms removed
+     */
+    public int cleanup() {
+        int sizeBefore = queue.size();
+        
+        // Remove all dead organisms
+        queue.removeIf(org -> !org.isAlive());
+        
+        int removed = sizeBefore - queue.size();
+        if (removed > 0) {
+            log.info("Reaper cleanup: removed {} dead organisms (queue: {} -> {})", 
+                    removed, sizeBefore, queue.size());
+        }
+        return removed;
+    }
+    
     @Override
     public int getOldestAge() {
         // Find oldest alive organism

@@ -93,11 +93,35 @@ public class RunCommand implements Callable<Integer> {
         }
         
         long startTime = System.currentTimeMillis();
-        simulator.run(maxCycles != null ? maxCycles : 0);
+        boolean oomOccurred = false;
+        
+        try {
+            simulator.run(maxCycles != null ? maxCycles : 0);
+        } catch (OutOfMemoryError e) {
+            oomOccurred = true;
+            // Clear progress line
+            if (progressListener != null) {
+                progressListener.finish();
+            }
+            System.out.println();
+            System.out.println("❌ OUT OF MEMORY!");
+            System.out.printf("   Heap: %,d MB used of %,d MB max%n",
+                    Runtime.getRuntime().totalMemory() / (1024 * 1024),
+                    Runtime.getRuntime().maxMemory() / (1024 * 1024));
+            SimulatorStats stats = simulator.getStats();
+            System.out.printf("   Reaper queue: %,d organisms (dead accumulation from lazy deletion)%n",
+                    stats.reaperQueueSize());
+            System.out.printf("   Cycle: %,d  |  Spawns: %,d%n", 
+                    stats.totalCycles(), stats.totalSpawns());
+            System.out.println();
+            System.out.println("💡 Try: increase -Xmx, reduce --max-organisms, or reduce --cycles");
+            System.out.println();
+        }
+        
         long elapsed = System.currentTimeMillis() - startTime;
         
         // Clear progress line before final report
-        if (progressListener != null) {
+        if (progressListener != null && !oomOccurred) {
             progressListener.finish();
         }
         
@@ -106,7 +130,7 @@ public class RunCommand implements Callable<Integer> {
             printFinalReport(simulator, elapsed);
         }
         
-        return 0;
+        return oomOccurred ? 1 : 0;
     }
     
     private void printBanner() {
@@ -215,6 +239,13 @@ public class RunCommand implements Callable<Integer> {
                 stats.cyclesPerSpawn());
         System.out.println();
         
+        // JVM
+        System.out.println("📦 JVM:");
+        System.out.printf("   Heap: %,d / %,d MB (%.1f%%)%n",
+                stats.heapUsedMB(), stats.heapMaxMB(), stats.heapUsagePercent());
+        System.out.printf("   Reaper queue: %,d%n", stats.reaperQueueSize());
+        System.out.println();
+        
         // Reproducibility
         System.out.printf("🔑 Seed: %d (use --seed %d to reproduce)%n", 
                 simulator.getActualSeed(), simulator.getActualSeed());
@@ -253,14 +284,15 @@ public class RunCommand implements Callable<Integer> {
             
             // Clear line and print progress (no newline)
             System.out.print(CLEAR_LINE);
-            System.out.printf("%s [%s] Cycle %,d  |  👥 %d  |  🐣 %d  |  💀 %d  |  🧬 %d",
+            System.out.printf("%s [%s] Cycle %,d  |  👥 %d  |  🐣 %d  |  💀 %d  |  📦 %d/%dMB",
                     spinner,
                     time,
                     stats.totalCycles(),
                     stats.aliveCount(),
                     stats.totalSpawns(),
                     stats.deathsByErrors() + stats.deathsByReaper(),
-                    stats.totalMutations());
+                    stats.heapUsedMB(),
+                    stats.heapMaxMB());
             System.out.flush();
             needsClear = true;
         }

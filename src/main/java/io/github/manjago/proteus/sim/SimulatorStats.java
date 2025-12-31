@@ -19,7 +19,10 @@ public record SimulatorStats(
     int largestFreeBlock,
     double fragmentation,
     int totalMutations,
-    int defragmentations
+    int defragmentations,
+    int reaperQueueSize,      // Raw queue size (includes dead for lazy deletion)
+    long heapUsedMB,          // JVM heap used in MB
+    long heapMaxMB            // JVM heap max in MB
 ) {
     
     /**
@@ -42,6 +45,13 @@ public record SimulatorStats(
      */
     public double mutationsPerSpawn() {
         return totalSpawns > 0 ? (double) totalMutations / totalSpawns : 0;
+    }
+    
+    /**
+     * Get heap usage percentage.
+     */
+    public double heapUsagePercent() {
+        return heapMaxMB > 0 ? 100.0 * heapUsedMB / heapMaxMB : 0;
     }
     
     @Override
@@ -70,6 +80,10 @@ public record SimulatorStats(
               Leak detected:  %,d cells
             
             Mutations:        %,d total (%.2f per spawn)
+            
+            JVM:
+              Heap:           %,d / %,d MB (%.1f%%)
+              Reaper queue:   %,d
             """,
             totalCycles,
             totalSpawns, cyclesPerSpawn(),
@@ -87,7 +101,9 @@ public record SimulatorStats(
             fragmentation * 100,
             defragmentations,
             memoryLeak,
-            totalMutations, mutationsPerSpawn()
+            totalMutations, mutationsPerSpawn(),
+            heapUsedMB, heapMaxMB, heapUsagePercent(),
+            reaperQueueSize
         );
     }
 }

@@ -11,6 +11,6 @@ fi
 
 # -Xmx512m: VPS-realistic memory limit
 # -XX:+UseG1GC: better for long-running simulations
-# -XX:+ExitOnOutOfMemoryError: fail fast, don't hang
-java -Xmx512m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError \
+# Note: OOM is caught and reported by the application
+java -Xmx512m -XX:+UseG1GC \
     -jar "$JAR" run "$@"

@@ -149,6 +149,16 @@ public class Simulator {
                     reportProgress();
                 }
                 
+                // Periodic reaper queue cleanup (every 10,000 cycles)
+                // Prevents OOM from lazy deletion accumulation
+                if (totalCycles % 10_000 == 0) {
+                    int rawSize = reaper.getRawQueueSize();
+                    // Cleanup when dead organisms exceed 2x alive count
+                    if (rawSize > aliveCount * 2 + 10_000) {
+                        reaper.cleanup();
+                    }
+                }
+                
                 // Checkpoint
                 if (config.checkpointInterval() > 0 && totalCycles % config.checkpointInterval() == 0) {
                     listener.onCheckpoint(totalCycles);
@@ -489,6 +499,10 @@ public class Simulator {
      * Get current simulation statistics.
      */
     public SimulatorStats getStats() {
+        Runtime runtime = Runtime.getRuntime();
+        long heapUsed = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
+        long heapMax = runtime.maxMemory() / (1024 * 1024);
+        
         return new SimulatorStats(
             totalCycles,
             totalSpawns,
@@ -505,7 +519,10 @@ public class Simulator {
             memoryManager.getLargestFreeBlock(),
             memoryManager.getFragmentation(),
             mutationTracker.size(),
-            defragmentations
+            defragmentations,
+            reaper.getRawQueueSize(),
+            heapUsed,
+            heapMax
         );
     }
 }

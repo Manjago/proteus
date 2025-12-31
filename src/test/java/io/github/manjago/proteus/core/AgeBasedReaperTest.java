@@ -351,4 +351,72 @@ class AgeBasedReaperTest {
             assertTrue(str.contains("queueSize=1"));
         }
     }
+    
+    // ========== Cleanup ==========
+    
+    @Nested
+    @DisplayName("Cleanup")
+    class Cleanup {
+        
+        @Test
+        @DisplayName("getRawQueueSize includes dead organisms")
+        void getRawQueueSizeIncludesDead() {
+            Organism org1 = createOrganism(0, -1, 0);
+            Organism org2 = createOrganism(1, -1, 1);
+            reaper.register(org1);
+            reaper.register(org2);
+            
+            // Kill one but don't remove from queue (lazy deletion)
+            org1.kill();
+            memoryManager.free(org1.getStartAddr(), org1.getSize());
+            reaper.unregister(org1);
+            
+            // Queue still has both
+            assertEquals(2, reaper.getRawQueueSize());
+            // But only one is alive
+            assertEquals(1, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("cleanup removes dead organisms")
+        void cleanupRemovesDead() {
+            Organism org1 = createOrganism(0, -1, 0);
+            Organism org2 = createOrganism(1, -1, 1);
+            Organism org3 = createOrganism(2, -1, 2);
+            reaper.register(org1);
+            reaper.register(org2);
+            reaper.register(org3);
+            
+            // Kill two
+            org1.kill();
+            org3.kill();
+            
+            assertEquals(3, reaper.getRawQueueSize());
+            
+            // Cleanup
+            int removed = reaper.cleanup();
+            
+            assertEquals(2, removed);
+            assertEquals(1, reaper.getRawQueueSize());
+            assertEquals(1, reaper.getQueueSize());
+        }
+        
+        @Test
+        @DisplayName("cleanup on empty queue returns 0")
+        void cleanupEmptyQueue() {
+            assertEquals(0, reaper.cleanup());
+        }
+        
+        @Test
+        @DisplayName("cleanup with all alive returns 0")
+        void cleanupAllAlive() {
+            Organism org1 = createOrganism(0, -1, 0);
+            Organism org2 = createOrganism(1, -1, 1);
+            reaper.register(org1);
+            reaper.register(org2);
+            
+            assertEquals(0, reaper.cleanup());
+            assertEquals(2, reaper.getRawQueueSize());
+        }
+    }
 }

@@ -263,10 +263,17 @@ public Organism reap() {
 }
 ```
 
-**Компромисс:**
+**Periodic Cleanup:** Каждые 10,000 циклов проверяем размер очереди:
+```java
+if (rawQueueSize > aliveCount * 2 + 10_000) {
+    reaper.cleanup();  // removeIf(!isAlive)
+}
+```
+
+**Результаты:**
 - ✅ unregister(): O(n) → O(1)
-- ⚠️ Queue растёт с мёртвыми организмами (память!)
-- 📋 TODO: periodic cleanup для очистки мёртвых
+- ✅ cleanup(): O(n) но редко (каждые 10K+ циклов)
+- ✅ Предотвращает OOM от накопления мёртвых
 
 ---
 
@@ -569,9 +576,13 @@ java -jar proteus.jar info
 - [x] Performance: O(1) unregister (lazy deletion)
 - [x] Performance: O(alive) parent search
 
-### 🚧 В работе (Stage 4: Cleanup & Persistence)
+### ✅ Выполнено (Stage 4: Cleanup)
 
-- [ ] **Reaper Queue Cleanup** — периодическая очистка мёртвых из очереди (lazy deletion накапливает мусор)
+- [x] **Reaper Queue Cleanup** — периодическая очистка мёртвых из очереди (lazy deletion)
+- [x] **Heap Monitoring** — мониторинг JVM heap в статистике
+- [x] **OOM Handling** — логирование OutOfMemoryError с диагностикой
+
+### 🚧 В работе (Stage 4: Persistence)
 - [ ] **PersistenceManager** — H2 MVStore для сохранения состояния
 - [ ] **EventLogger** — журнал событий (JSON Lines)
 - [ ] **Checkpoints** — периодическое сохранение
