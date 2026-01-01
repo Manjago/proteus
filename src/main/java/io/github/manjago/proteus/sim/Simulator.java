@@ -495,6 +495,41 @@ public class Simulator {
     }
     
     /**
+     * Detailed memory diagnostics for debugging leaks.
+     */
+    public String getMemoryDiagnostics() {
+        int actual = memoryManager.getUsedMemory();
+        int expected = getExpectedMemoryUsed();
+        int leak = actual - expected;
+        
+        if (leak == 0) {
+            return "Memory OK: " + actual + " cells";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Memory mismatch: actual=%d, expected=%d, diff=%d%n", actual, expected, leak));
+        
+        // Count components of expected
+        int orgSizes = 0;
+        int pendingCount = 0;
+        int pendingTotal = 0;
+        
+        for (Organism org : aliveOrganisms) {
+            orgSizes += org.getSize();
+            if (org.getState().hasPendingAllocation()) {
+                pendingCount++;
+                pendingTotal += org.getState().getPendingAllocSize();
+            }
+        }
+        
+        sb.append(String.format("  Alive orgs: %d, total size: %d%n", aliveOrganisms.size(), orgSizes));
+        sb.append(String.format("  Pending allocations: %d, total: %d%n", pendingCount, pendingTotal));
+        sb.append(String.format("  Expected = orgSizes + pending = %d + %d = %d%n", orgSizes, pendingTotal, expected));
+        
+        return sb.toString();
+    }
+    
+    /**
      * Get current simulation statistics.
      */
     public SimulatorStats getStats() {

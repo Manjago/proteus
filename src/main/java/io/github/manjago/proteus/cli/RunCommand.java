@@ -237,6 +237,8 @@ public class RunCommand implements Callable<Integer> {
         }
         if (stats.memoryLeak() != 0) {
             System.out.printf("   ⚠️  Memory leak: %,d cells%n", stats.memoryLeak());
+            // Print detailed diagnostics
+            System.out.println("   " + simulator.getMemoryDiagnostics().replace("\n", "\n   "));
         } else {
             System.out.println("   Memory leak: 0 ✓");
         }

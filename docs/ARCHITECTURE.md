@@ -369,11 +369,22 @@ int[] ownership = new int[soupSize];
 
 | Метод | Сложность | Описание |
 |-------|-----------|----------|
-| `allocate(size)` | O(n) | First-fit scan, помечает allocId |
+| `allocate(size)` | O(n) worst | Next-fit scan, помечает allocId |
 | `free(addr, size)` | O(size) | Помечает FREE (no-op если уже FREE) |
 | `getUsedMemory()` | O(n) | Считает не-FREE ячейки |
-| `rebuild(usedEnd)` | O(n) | Очищает всё (для defrag) |
+| `rebuild(usedEnd)` | O(n) | Очищает всё + сбрасывает nextFitPosition |
 | `markUsed(addr, size)` | O(size) | Помечает занятым (для defrag) |
+
+**Next-Fit Allocation:**
+```java
+// Запоминаем позицию после последней аллокации
+nextFitPosition = allocatedEnd;
+
+// Следующий allocate начинает с этой позиции
+// Если не нашли - wrap around к началу
+```
+
+Преимущество: при стабильной популяции аллокации идут "вперёд" по памяти, избегая повторного сканирования занятых областей в начале. Предотвращает деградацию O(n) → O(1) в типичном случае.
 
 **Гарантии:**
 - ✅ `getUsedMemory() >= 0` ВСЕГДА

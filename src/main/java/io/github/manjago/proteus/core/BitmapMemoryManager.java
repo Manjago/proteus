@@ -54,14 +54,22 @@ public class BitmapMemoryManager implements MemoryManager {
         log.debug("BitmapMemoryManager created with {} cells", size);
     }
     
+    /** Next-fit: position to start searching from */
+    private int nextFitPosition = 0;
+    
     @Override
     public int allocate(int size) {
         if (size <= 0 || size > totalSize) {
             return -1;
         }
         
-        // First-fit scan
-        int start = findFreeBlock(size);
+        // Next-fit scan: start from last position, wrap around if needed
+        int start = findFreeBlock(size, nextFitPosition);
+        if (start == -1 && nextFitPosition > 0) {
+            // Wrap around: try from beginning
+            start = findFreeBlock(size, 0);
+        }
+        
         if (start == -1) {
             log.trace("Allocation failed: no contiguous block of size {}", size);
             return -1;
@@ -73,6 +81,12 @@ public class BitmapMemoryManager implements MemoryManager {
             ownership[i] = allocId;
         }
         
+        // Update next-fit position to after this allocation
+        nextFitPosition = start + size;
+        if (nextFitPosition >= totalSize) {
+            nextFitPosition = 0;
+        }
+        
         totalAllocations++;
         log.trace("Allocated {} cells at addr {} (allocId={})", size, start, allocId);
         
@@ -80,16 +94,17 @@ public class BitmapMemoryManager implements MemoryManager {
     }
     
     /**
-     * Find first contiguous free block of given size.
+     * Find contiguous free block of given size, starting from specified position.
      * 
      * @param size required size
-     * @return start address, or -1 if not found
+     * @param startFrom position to start scanning from
+     * @return start address, or -1 if not found before end of array
      */
-    private int findFreeBlock(int size) {
+    private int findFreeBlock(int size, int startFrom) {
         int consecutiveFree = 0;
         int blockStart = -1;
         
-        for (int i = 0; i < totalSize; i++) {
+        for (int i = startFrom; i < totalSize; i++) {
             if (ownership[i] == FREE) {
                 if (consecutiveFree == 0) {
                     blockStart = i;
@@ -204,6 +219,9 @@ public class BitmapMemoryManager implements MemoryManager {
             ownership[i] = FREE;
         }
         
+        // Reset next-fit position (will be updated by markUsed calls)
+        nextFitPosition = 0;
+        
         log.debug("Rebuilt: cleared all {} cells", totalSize);
     }
     
@@ -221,6 +239,12 @@ public class BitmapMemoryManager implements MemoryManager {
         int end = Math.min(addr + size, totalSize);
         for (int i = addr; i < end; i++) {
             ownership[i] = allocId;
+        }
+        
+        // Update next-fit position to after this marked region
+        nextFitPosition = end;
+        if (nextFitPosition >= totalSize) {
+            nextFitPosition = 0;
         }
         
         log.trace("Marked [{}, {}) as used (allocId={})", addr, end, allocId);
