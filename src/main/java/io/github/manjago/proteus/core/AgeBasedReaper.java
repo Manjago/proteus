@@ -96,9 +96,15 @@ public class AgeBasedReaper implements Reaper {
             state.clearPendingAllocation();
         }
         
-        // Free its memory (only if size is valid)
+        // Free organism's memory using allocId for safety
         if (victim.getSize() > 0) {
-            memoryManager.free(victim.getStartAddr(), victim.getSize());
+            int orgAllocId = victim.getAllocId();
+            if (orgAllocId >= 0) {
+                memoryManager.freeByAllocId(victim.getStartAddr(), victim.getSize(), orgAllocId);
+            } else {
+                // Fallback for old organisms without allocId
+                memoryManager.free(victim.getStartAddr(), victim.getSize());
+            }
         }
         
         log.debug("Reaped {} (age={}, freed {} cells)", 

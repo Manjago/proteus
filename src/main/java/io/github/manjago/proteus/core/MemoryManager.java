@@ -112,4 +112,14 @@ public interface MemoryManager {
         freeIfOwned(addr, size);
         return size;  // Approximation
     }
+    
+    /**
+     * Get the allocId of the last successful allocation.
+     * Used to track ownership for safe cleanup.
+     * 
+     * @return allocId, or -1 if not available
+     */
+    default int getLastAllocId() {
+        return -1;
+    }
 }

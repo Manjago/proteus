@@ -75,15 +75,15 @@
 | Класс | Ответственность |
 |-------|-----------------|
 | `OpCode` | Enum инструкций + encoding/decoding |
-| `CpuState` | Состояние процессора (регистры, IP, startAddr, pending allocation) |
+| `CpuState` | Состояние процессора (регистры, IP, startAddr, pending allocation + allocId) |
 | `VirtualCPU` | Исполнение инструкций, мутации при COPY |
-| `SystemCallHandler` | Интерфейс для ALLOCATE, SPAWN, freePending |
-| `Organism` | Организм: геном, состояние, lifecycle |
-| `MemoryManager` | Интерфейс управления памятью (allocate/free/rebuild) |
-| `BitmapMemoryManager` | Реализация: ownership array, single source of truth |
+| `SystemCallHandler` | Интерфейс для ALLOCATE, SPAWN, freePending, getLastAllocId |
+| `Organism` | Организм: геном, состояние, lifecycle, allocId для safe cleanup |
+| `MemoryManager` | Интерфейс управления памятью (allocate/free/rebuild/freeByAllocId) |
+| `BitmapMemoryManager` | Реализация: ownership array, single source of truth, allocId tracking |
 | `Reaper` | Интерфейс жнеца (убийство + освобождение) |
-| `AgeBasedReaper` | Реализация: lazy deletion, убивает старейших |
-| `Defragmenter` | Компактификация памяти (two-pass algorithm) |
+| `AgeBasedReaper` | Реализация: lazy deletion, убивает старейших, freeByAllocId |
+| `Defragmenter` | Компактификация памяти (two-pass algorithm), обновляет allocId |
 | `MutationTracker` | Отслеживание мутаций при COPY |
 | `Disassembler` | Преобразование машинного кода в мнемоники |
 | `GenomeBuilder` | Fluent API для ручного создания геномов |
@@ -216,21 +216,29 @@ case COPY -> {
 - Двойном ALLOCATE без SPAWN между ними
 - Смерти организма до SPAWN
 - SPAWN с мутированным адресом/размером
+- Организм пишет поверх чужой памяти при COPY
 
-**Решение:** CpuState отслеживает pending allocation:
+**Решение:** CpuState отслеживает pending allocation с allocId:
 
 ```java
 // CpuState
 private int pendingAllocAddr = -1;
 private int pendingAllocSize = 0;
+private int pendingAllocId = -1;  // Уникальный ID для safe cleanup
 
 // При ALLOCATE
 if (hasPendingAllocation()) {
-    syscallHandler.freePending(pendingAddr, pendingSize);  // Освободить старый!
+    syscallHandler.freePending(pendingAddr, pendingSize, pendingAllocId);
 }
-state.setPendingAllocation(addr, size);
+state.setPendingAllocation(addr, size, allocId);
 
 // При SPAWN
+if (!memoryManager.hasConsistentOwnership(pendingAddr, pendingSize)) {
+    // Организм залез на чужую память при COPY!
+    memoryManager.freeByAllocId(pendingAddr, pendingSize, pendingAllocId);
+    reject spawn;
+}
+
 if (address != pendingAddr) {
     reject + free pending;  // Мутированный адрес!
 }
@@ -238,9 +246,19 @@ actualSize = pendingSize;  // Использовать реальный разм
 
 // При смерти
 if (state.hasPendingAllocation()) {
-    memoryManager.free(pendingAddr, pendingSize);
+    memoryManager.freeByAllocId(pendingAddr, pendingSize, pendingAllocId);
+}
+if (org.getAllocId() >= 0) {
+    memoryManager.freeByAllocId(org.getStartAddr(), org.getSize(), org.getAllocId());
 }
 ```
+
+**Organism.allocId:**
+
+Каждый организм хранит свой `allocId` для безопасного освобождения памяти:
+- При spawn: `allocId` передаётся из pending allocation
+- При defrag: `allocId` обновляется после `markUsed()`
+- При death/reap: `freeByAllocId()` освобождает только свои ячейки
 
 ### 4.6. Lazy Deletion в Reaper ✅
 
@@ -353,7 +371,27 @@ Adam — минимальный самовоспроизводящийся ор�
 
 ```java
 int[] ownership = new int[soupSize];
-// ownership[i] = -1 (FREE) или allocationId (занято)
+// ownership[i] = -1 (FREE) или allocId (занято)
+```
+
+**allocId Tracking:**
+
+Каждая аллокация получает уникальный `allocId`. Это позволяет:
+- Точно определить какие ячейки принадлежат какому организму
+- Безопасно освобождать только свои ячейки при конфликтах
+- Отслеживать pending allocations при reject spawn
+
+```java
+// При ALLOCATE
+int addr = memoryManager.allocate(size);
+int allocId = memoryManager.getLastAllocId();
+state.setPendingAllocation(addr, size, allocId);
+
+// При отклонённом SPAWN (например, organism wrote over alien memory)
+if (!hasConsistentOwnership(addr, size)) {
+    // Освобождаем только СВОИ ячейки
+    memoryManager.freeByAllocId(addr, size, allocId);
+}
 ```
 
 **Почему это лучше Free List:**
@@ -364,6 +402,7 @@ int[] ownership = new int[soupSize];
 | Сложный merge/split блоков | Нет блоков — только ячейки |
 | Рассинхронизация с реальностью | ownership IS реальность |
 | Сложная отладка | Можно визуализировать ownership |
+| Освобождение чужой памяти | freeByAllocId() освобождает только свои |
 
 **Операции:**
 
@@ -371,9 +410,13 @@ int[] ownership = new int[soupSize];
 |-------|-----------|----------|
 | `allocate(size)` | O(n) worst | Next-fit scan, помечает allocId |
 | `free(addr, size)` | O(size) | Помечает FREE (no-op если уже FREE) |
+| `freeByAllocId(addr, size, id)` | O(size) | Освобождает только ячейки с данным allocId |
+| `freeIfOwned(addr, size)` | O(size) | Освобождает если весь блок одного владельца |
+| `hasConsistentOwnership(addr, size)` | O(size) | Проверяет что весь блок одного владельца |
 | `getUsedMemory()` | O(n) | Считает не-FREE ячейки |
 | `rebuild(usedEnd)` | O(n) | Очищает всё + сбрасывает nextFitPosition |
-| `markUsed(addr, size)` | O(size) | Помечает занятым (для defrag) |
+| `markUsed(addr, size)` | O(size) | Помечает занятым, возвращает allocId |
+| `getLastAllocId()` | O(1) | Возвращает allocId последней аллокации |
 
 **Next-Fit Allocation:**
 ```java
@@ -390,6 +433,7 @@ nextFitPosition = allocatedEnd;
 - ✅ `getUsedMemory() >= 0` ВСЕГДА
 - ✅ `getUsedMemory() + getFreeMemory() == getTotalMemory()` ВСЕГДА
 - ✅ Double-free безопасен (просто игнорируется)
+- ✅ freeByAllocId() никогда не освободит чужую память
 
 ### 6.2. Фрагментация
 
@@ -406,9 +450,13 @@ fragmentation = 1 - (largestFreeBlock / totalFreeMemory)
 1. rebuild(0) — очищает ВСЮ ownership
 2. Для каждого организма:
    a. Копируем геном в новую позицию
-   b. markUsed(newAddr, size) — помечаем как занятый
+   b. int newAllocId = markUsed(newAddr, size) — помечаем как занятый
+   c. org.setAllocId(newAllocId) — обновляем allocId организма!
 3. Всё что не помечено — автоматически FREE
 ```
+
+**ВАЖНО:** После дефрагментации старые allocId недействительны. 
+`markUsed()` возвращает новый allocId который присваивается организму.
 
 **Position-Independence гарантирует** корректную работу после перемещения.
 
@@ -423,7 +471,7 @@ Reaper — механизм "смерти от старости":
 - Освобождает их память + pending allocation
 - Поддерживает круговорот поколений
 
-### 7.2. Алгоритм (Age-Based + Lazy Deletion)
+### 7.2. Алгоритм (Age-Based + Lazy Deletion + Safe Cleanup)
 
 ```java
 public Organism reap() {
@@ -431,11 +479,25 @@ public Organism reap() {
         Organism candidate = queue.poll();
         if (candidate.isAlive()) {
             candidate.kill();
-            // Free pending allocation if any
+            
+            // Free pending allocation using allocId (safe)
             if (state.hasPendingAllocation()) {
-                memoryManager.free(pendingAddr, pendingSize);
+                int allocId = state.getPendingAllocId();
+                if (allocId >= 0) {
+                    memoryManager.freeByAllocId(pendingAddr, pendingSize, allocId);
+                } else {
+                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                }
             }
-            memoryManager.free(org.addr, org.size);
+            
+            // Free organism memory using allocId (safe)
+            int orgAllocId = org.getAllocId();
+            if (orgAllocId >= 0) {
+                memoryManager.freeByAllocId(org.addr, org.size, orgAllocId);
+            } else {
+                memoryManager.free(org.addr, org.size);
+            }
+            
             return candidate;
         }
         // Skip dead organisms (lazy deletion)
@@ -451,6 +513,9 @@ public int reapUntilFree(int size) {
     }
 }
 ```
+
+**Safe Cleanup:** Использование `freeByAllocId()` гарантирует что освобождаются
+только ячейки принадлежащие данному организму, а не чужая память.
 
 ### 7.3. Триггеры
 
@@ -484,20 +549,37 @@ public int reapUntilFree(int size) {
 
 ```java
 int getExpectedMemoryUsed() {
-    int expected = 0;
+    int orgSizes = 0;
+    int pendingTotal = 0;
+    
     for (Organism org : aliveOrganisms) {
-        expected += org.getSize();
+        orgSizes += org.getSize();
         if (state.hasPendingAllocation()) {
-            expected += state.getPendingAllocSize();
+            pendingTotal += state.getPendingAllocSize();
         }
     }
-    return expected;
+    
+    // ВАЖНО: вычитаем overlaps чтобы не считать дважды!
+    int overlapCells = calculateOrgPendingOverlapCells();
+    
+    return orgSizes + pendingTotal - overlapCells;
 }
 
 int getMemoryLeak() {
     return memoryManager.getUsedMemory() - getExpectedMemoryUsed();
 }
 ```
+
+**Org-Pending Overlaps:**
+
+Ситуация когда pending allocation перекрывается с уже существующим организмом.
+Это происходит когда:
+1. Организм A делает ALLOCATE получает [1000, 1014)
+2. Другой организм B занимает [1000, 1014) (например, при SPAWN)
+3. Pending A всё ещё указывает на [1000, 1014) — overlap!
+
+При подсчёте `expected` такие ячейки считались бы дважды.
+`calculateOrgPendingOverlapCells()` вычитает эти overlaps.
 
 Если `memoryLeak > 0` при `aliveCount = 0` — есть утечка!
 
@@ -626,6 +708,9 @@ java -jar proteus.jar info
 ### ✅ Выполнено (Технический долг)
 - [x] **Удалён FreeListMemoryManager** — упростили код, только BitmapMemoryManager
 - [x] **Defragmenter** — теперь работает только с BitmapMemoryManager (без instanceof)
+- [x] **allocId Tracking** — каждая аллокация, pending и организм имеют allocId для safe cleanup
+- [x] **freeByAllocId()** — освобождение только своих ячеек, предотвращает corruption
+- [x] **Memory Leak Detection** — учитывает org-pending overlaps в формуле expected
 
 ### 📋 Планы (Stage 5+)
 

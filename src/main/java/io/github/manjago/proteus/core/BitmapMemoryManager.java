@@ -106,6 +106,7 @@ public class BitmapMemoryManager implements MemoryManager {
      * Get the allocId of the last successful allocation.
      * Used to track ownership of pending allocations.
      */
+    @Override
     public int getLastAllocId() {
         return nextAllocationId - 1;
     }
@@ -333,9 +334,10 @@ public class BitmapMemoryManager implements MemoryManager {
      * 
      * @param addr start address
      * @param size block size
+     * @return the allocId assigned to this range
      */
-    public void markUsed(int addr, int size) {
-        if (addr < 0 || size <= 0) return;
+    public int markUsed(int addr, int size) {
+        if (addr < 0 || size <= 0) return -1;
         
         int allocId = nextAllocationId++;
         int end = Math.min(addr + size, totalSize);
@@ -350,6 +352,7 @@ public class BitmapMemoryManager implements MemoryManager {
         }
         
         log.trace("Marked [{}, {}) as used (allocId={})", addr, end, allocId);
+        return allocId;
     }
     
     /**

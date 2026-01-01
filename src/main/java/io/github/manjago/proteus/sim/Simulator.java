@@ -101,7 +101,10 @@ public class Simulator {
             soup.set(addr + i, genome[i]);
         }
         
-        Organism adam = new Organism(0, addr, genome.length, -1, 0);
+        // Get allocId for safe memory tracking
+        int allocId = memoryManager.getLastAllocId();
+        
+        Organism adam = new Organism(0, addr, genome.length, -1, 0, allocId);
         totalOrganismsCreated++;
         aliveOrganisms.add(adam);
         reaper.register(adam);
@@ -250,9 +253,15 @@ public class Simulator {
             state.clearPendingAllocation();
         }
         
-        // Only free memory if size is valid
+        // Free organism's memory using allocId for safety
         if (org.getSize() > 0) {
-            memoryManager.free(org.getStartAddr(), org.getSize());
+            int orgAllocId = org.getAllocId();
+            if (orgAllocId >= 0) {
+                memoryManager.freeByAllocId(org.getStartAddr(), org.getSize(), orgAllocId);
+            } else {
+                // Fallback for old organisms without allocId
+                memoryManager.free(org.getStartAddr(), org.getSize());
+            }
         }
         
         // Track death cause correctly
@@ -449,16 +458,20 @@ public class Simulator {
                 }
                 int parentId = parent != null ? parent.getId() : -1;
                 
-                // Clear pending - ownership transfers to child organism
+                // Save allocId before clearing - ownership transfers to child
+                int childAllocId = pendingAllocId;
+                
+                // Clear pending
                 parentState.clearPendingAllocation();
                 
-                // Create child organism
+                // Create child organism with allocId for safe memory tracking
                 Organism child = new Organism(
                     totalOrganismsCreated,
                     address,
                     actualSize,
                     parentId,
-                    totalCycles
+                    totalCycles,
+                    childAllocId
                 );
                 totalOrganismsCreated++;
                 aliveOrganisms.add(child);
@@ -467,7 +480,8 @@ public class Simulator {
                 maxAlive = Math.max(maxAlive, aliveCount);
                 totalSpawns++;
                 
-                log.debug("Spawn: {} (parent: {}, size: {})", child.getId(), parentId, actualSize);
+                log.debug("Spawn: {} (parent: {}, size: {}, allocId: {})", 
+                        child.getId(), parentId, actualSize, childAllocId);
                 listener.onSpawn(child, parent, totalCycles);
                 
                 return true;
@@ -518,18 +532,56 @@ public class Simulator {
     
     /**
      * Calculate expected memory usage (for leak detection).
-     * Sum of: alive organisms' sizes + pending allocations
+     * Sum of: alive organisms' sizes + pending allocations - overlaps
      */
     public int getExpectedMemoryUsed() {
-        int expected = 0;
+        int orgSizes = 0;
+        int pendingTotal = 0;
+        
         for (Organism org : aliveOrganisms) {
-            expected += org.getSize();
+            orgSizes += org.getSize();
             CpuState state = org.getState();
             if (state.hasPendingAllocation()) {
-                expected += state.getPendingAllocSize();
+                pendingTotal += state.getPendingAllocSize();
             }
         }
-        return expected;
+        
+        // Calculate overlaps to avoid double-counting
+        int overlapCells = calculateOrgPendingOverlapCells();
+        
+        return orgSizes + pendingTotal - overlapCells;
+    }
+    
+    /**
+     * Calculate total cells where org-pending overlaps occur.
+     * These cells would be double-counted in naive expected calculation.
+     */
+    private int calculateOrgPendingOverlapCells() {
+        int overlapCells = 0;
+        
+        for (Organism org : aliveOrganisms) {
+            CpuState state = org.getState();
+            if (state.hasPendingAllocation()) {
+                int pendAddr = state.getPendingAllocAddr();
+                int pendSize = state.getPendingAllocSize();
+                int pendEnd = pendAddr + pendSize;
+                
+                for (Organism other : aliveOrganisms) {
+                    if (other == org) continue;
+                    int otherStart = other.getStartAddr();
+                    int otherEnd = otherStart + other.getSize();
+                    
+                    // Check overlap
+                    if (pendAddr < otherEnd && pendEnd > otherStart) {
+                        int overlapStart = Math.max(pendAddr, otherStart);
+                        int overlapEnd = Math.min(pendEnd, otherEnd);
+                        overlapCells += (overlapEnd - overlapStart);
+                    }
+                }
+            }
+        }
+        
+        return overlapCells;
     }
     
     /**

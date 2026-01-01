@@ -125,8 +125,9 @@ public class Defragmenter {
                 totalBytesCompacted += size;
             }
             
-            // Mark new position as used
-            memoryManager.markUsed(nextFreeAddr, size);
+            // Mark new position as used and update organism's allocId
+            int newAllocId = memoryManager.markUsed(nextFreeAddr, size);
+            org.setAllocId(newAllocId);
             
             nextFreeAddr += size;
         }

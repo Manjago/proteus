@@ -8,6 +8,7 @@ package io.github.manjago.proteus.core;
  * - Its own CPU state (registers, IP)
  * - Lifecycle tracking (age, errors, alive status)
  * - Genealogy (parentId for family tree)
+ * - Memory allocId for safe cleanup
  * 
  * In ISA v1.2, organisms are position-independent, so startAddr can be
  * changed during defragmentation without breaking execution.
@@ -20,6 +21,7 @@ public class Organism {
     private final CpuState state;
     private final int parentId;
     private final long birthCycle;
+    private int allocId = -1;  // BitmapMM allocId for safe memory cleanup
     
     private boolean alive = true;
     
@@ -39,6 +41,14 @@ public class Organism {
         this.parentId = parentId;
         this.birthCycle = birthCycle;
         this.state = new CpuState(startAddr);  // IP starts at organism's code
+    }
+    
+    /**
+     * Create a new organism with allocId for safe memory tracking.
+     */
+    public Organism(int id, int startAddr, int size, int parentId, long birthCycle, int allocId) {
+        this(id, startAddr, size, parentId, birthCycle);
+        this.allocId = allocId;
     }
     
     // ========== Getters ==========
@@ -65,6 +75,17 @@ public class Organism {
     
     public int getSize() {
         return size;
+    }
+    
+    public int getAllocId() {
+        return allocId;
+    }
+    
+    /**
+     * Set allocId (used after defragmentation when memory is remarked).
+     */
+    public void setAllocId(int allocId) {
+        this.allocId = allocId;
     }
     
     public CpuState getState() {
