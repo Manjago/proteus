@@ -54,10 +54,9 @@ public class AssembleCommand implements Callable<Integer> {
             if (showDisassembly || verbose) {
                 System.out.println();
                 System.out.println("=== Disassembly ===");
-                Disassembler disasm = new Disassembler();
                 for (int i = 0; i < code.length; i++) {
                     String hex = String.format("0x%08X", code[i]);
-                    String asm = disasm.disassemble(code[i]);
+                    String asm = Disassembler.disassemble(code[i]);
                     System.out.printf("%04X: %s  ; %s%n", i, hex, asm);
                 }
                 System.out.println();

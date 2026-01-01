@@ -12,12 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class AssemblerTest {
     
     private Assembler assembler;
-    private Disassembler disassembler;
     
     @BeforeEach
     void setUp() {
         assembler = new Assembler();
-        disassembler = new Disassembler();
     }
     
     @Test
@@ -297,7 +295,7 @@ class AssemblerTest {
         
         // Disassemble back
         for (int i = 0; i < code.length; i++) {
-            String disasm = disassembler.disassemble(code[i]);
+            String disasm = Disassembler.disassemble(code[i]);
             assertNotNull(disasm);
             assertFalse(disasm.contains("???"));
         }
