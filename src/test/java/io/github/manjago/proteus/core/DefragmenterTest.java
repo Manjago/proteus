@@ -198,8 +198,8 @@ class DefragmenterTest {
     }
     
     @Test
-    @DisplayName("rebuild creates single free block")
-    void rebuildCreatesOneFreeBlock() {
+    @DisplayName("rebuild clears all, markUsed sets ownership")
+    void rebuildAndMarkUsed() {
         // Fragment memory
         memoryManager.allocate(10);
         memoryManager.allocate(20);
@@ -207,8 +207,14 @@ class DefragmenterTest {
         
         assertTrue(memoryManager.getFreeBlockCount() >= 2);
         
-        // Rebuild with used memory ending at 50
-        memoryManager.rebuild(50);
+        // Rebuild clears all ownership
+        memoryManager.rebuild(0);
+        
+        assertEquals(1, memoryManager.getFreeBlockCount());
+        assertEquals(SOUP_SIZE, memoryManager.getFreeMemory());
+        
+        // Now mark some as used (simulating defragment)
+        memoryManager.markUsed(0, 50);
         
         assertEquals(1, memoryManager.getFreeBlockCount());
         assertEquals(SOUP_SIZE - 50, memoryManager.getFreeMemory());

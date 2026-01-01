@@ -15,25 +15,28 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
  * position-independent code - organisms continue executing
  * correctly after being moved.
  * 
+ * Works exclusively with BitmapMemoryManager for guaranteed
+ * memory accounting correctness.
+ * 
  * Algorithm:
  * 1. Sort alive organisms by their current startAddr
- * 2. Compact each organism to the lowest available address
- * 3. Update each organism's startAddr (and CpuState.startAddr)
- * 4. Rebuild the memory manager's free list
+ * 2. Clear all memory ownership (rebuild)
+ * 3. Compact each organism to the lowest available address
+ * 4. Mark each organism's new position as used
  */
 public class Defragmenter {
     
     private static final Logger log = LoggerFactory.getLogger(Defragmenter.class);
     
     private final AtomicIntegerArray soup;
-    private final MemoryManager memoryManager;
+    private final BitmapMemoryManager memoryManager;
     
     // Statistics
     private int defragmentations = 0;
     private int totalMoved = 0;
     private long totalBytesCompacted = 0;
     
-    public Defragmenter(AtomicIntegerArray soup, MemoryManager memoryManager) {
+    public Defragmenter(AtomicIntegerArray soup, BitmapMemoryManager memoryManager) {
         this.soup = soup;
         this.memoryManager = memoryManager;
     }
@@ -108,11 +111,8 @@ public class Defragmenter {
         int movedCount = 0;
         int nextFreeAddr = 0;
         
-        // For BitmapMM: clear all ownership first, then mark used in loop
-        // For FreeListMM: we'll call rebuild(usedEnd) at the end
-        if (memoryManager instanceof BitmapMemoryManager) {
-            memoryManager.rebuild(0);  // Clear all
-        }
+        // Clear all ownership first
+        memoryManager.rebuild(0);
         
         for (Organism org : aliveOrganisms) {
             int oldAddr = org.getStartAddr();
@@ -125,15 +125,10 @@ public class Defragmenter {
                 totalBytesCompacted += size;
             }
             
-            // Mark new position as used (only for BitmapMM)
-            markUsedInMemoryManager(nextFreeAddr, size);
+            // Mark new position as used
+            memoryManager.markUsed(nextFreeAddr, size);
             
             nextFreeAddr += size;
-        }
-        
-        // For FreeListMM: create single free block after all organisms
-        if (!(memoryManager instanceof BitmapMemoryManager)) {
-            memoryManager.rebuild(nextFreeAddr);
         }
         
         defragmentations++;
@@ -151,21 +146,6 @@ public class Defragmenter {
                  blocksBefore, memoryManager.getFreeBlockCount());
         
         return movedCount;
-    }
-    
-    /**
-     * Mark memory as used after defragmentation.
-     * Works with BitmapMemoryManager directly.
-     */
-    private void markUsedInMemoryManager(int addr, int size) {
-        if (memoryManager instanceof BitmapMemoryManager) {
-            BitmapMemoryManager bmm = (BitmapMemoryManager) memoryManager;
-            bmm.markUsed(addr, size);
-            log.trace("Marked {} cells at {} as used via BitmapMM", size, addr);
-        } else {
-            // Fallback for other implementations: rebuild() at end handles it
-            log.trace("Non-BitmapMM: will use rebuild(usedEnd) approach");
-        }
     }
     
     /**

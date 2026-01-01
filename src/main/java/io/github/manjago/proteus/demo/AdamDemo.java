@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
  * 
  * This demonstration shows:
  * - Self-replicating organisms (starting with Adam)
- * - Memory allocation via FreeListMemoryManager
+ * - Memory allocation via BitmapMemoryManager
  * - Population control via AgeBasedReaper
  * - Mutations during replication
  * - Evolution over time
@@ -48,7 +48,7 @@ public class AdamDemo {
     
     public AdamDemo(double mutationRate) {
         this.soup = new AtomicIntegerArray(SOUP_SIZE);
-        this.memoryManager = new FreeListMemoryManager(SOUP_SIZE);
+        this.memoryManager = new BitmapMemoryManager(SOUP_SIZE);
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationRate = mutationRate;
         this.mutationTracker = new MutationTracker();

@@ -27,7 +27,7 @@ public class Simulator {
     private final AtomicIntegerArray soup;
     
     // Core components
-    private final MemoryManager memoryManager;
+    private final BitmapMemoryManager memoryManager;
     private final Reaper reaper;
     private final VirtualCPU cpu;
     private final MutationTracker mutationTracker;

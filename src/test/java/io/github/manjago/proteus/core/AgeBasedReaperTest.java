@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AgeBasedReaperTest {
     
-    private FreeListMemoryManager memoryManager;
+    private BitmapMemoryManager memoryManager;
     private AgeBasedReaper reaper;
     
     private static final int SOUP_SIZE = 1000;
@@ -17,7 +17,7 @@ class AgeBasedReaperTest {
     
     @BeforeEach
     void setUp() {
-        memoryManager = new FreeListMemoryManager(SOUP_SIZE);
+        memoryManager = new BitmapMemoryManager(SOUP_SIZE);
         reaper = new AgeBasedReaper(memoryManager);
     }
     
