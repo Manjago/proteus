@@ -18,13 +18,13 @@ class DefragmenterTest {
     private static final int SOUP_SIZE = 1000;
     
     private AtomicIntegerArray soup;
-    private FreeListMemoryManager memoryManager;
+    private BitmapMemoryManager memoryManager;
     private Defragmenter defragmenter;
     
     @BeforeEach
     void setUp() {
         soup = new AtomicIntegerArray(SOUP_SIZE);
-        memoryManager = new FreeListMemoryManager(SOUP_SIZE);
+        memoryManager = new BitmapMemoryManager(SOUP_SIZE);
         defragmenter = new Defragmenter(soup, memoryManager);
     }
     

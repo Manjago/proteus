@@ -108,8 +108,11 @@ public class Defragmenter {
         int movedCount = 0;
         int nextFreeAddr = 0;
         
-        // First, clear all ownership (fresh start)
-        memoryManager.rebuild(0);
+        // For BitmapMM: clear all ownership first, then mark used in loop
+        // For FreeListMM: we'll call rebuild(usedEnd) at the end
+        if (memoryManager instanceof BitmapMemoryManager) {
+            memoryManager.rebuild(0);  // Clear all
+        }
         
         for (Organism org : aliveOrganisms) {
             int oldAddr = org.getStartAddr();
@@ -122,10 +125,15 @@ public class Defragmenter {
                 totalBytesCompacted += size;
             }
             
-            // Mark new position as used (works for both moved and unmoved)
+            // Mark new position as used (only for BitmapMM)
             markUsedInMemoryManager(nextFreeAddr, size);
             
             nextFreeAddr += size;
+        }
+        
+        // For FreeListMM: create single free block after all organisms
+        if (!(memoryManager instanceof BitmapMemoryManager)) {
+            memoryManager.rebuild(nextFreeAddr);
         }
         
         defragmentations++;
@@ -150,10 +158,14 @@ public class Defragmenter {
      * Works with BitmapMemoryManager directly.
      */
     private void markUsedInMemoryManager(int addr, int size) {
-        if (memoryManager instanceof BitmapMemoryManager bmm) {
+        if (memoryManager instanceof BitmapMemoryManager) {
+            BitmapMemoryManager bmm = (BitmapMemoryManager) memoryManager;
             bmm.markUsed(addr, size);
+            log.trace("Marked {} cells at {} as used via BitmapMM", size, addr);
+        } else {
+            // Fallback for other implementations: rebuild() at end handles it
+            log.trace("Non-BitmapMM: will use rebuild(usedEnd) approach");
         }
-        // For other implementations, rebuild() handles it
     }
     
     /**

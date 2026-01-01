@@ -283,8 +283,8 @@ class BitmapMemoryManagerTest {
             BitmapMemoryManager small = new BitmapMemoryManager(10);
             
             assertEquals(10, small.getTotalMemory());
-            assertEquals(10, small.allocate(10));
-            assertEquals(-1, small.allocate(1));
+            assertEquals(0, small.allocate(10));  // Returns address 0, not size
+            assertEquals(-1, small.allocate(1));  // No more space
         }
     }
 }
