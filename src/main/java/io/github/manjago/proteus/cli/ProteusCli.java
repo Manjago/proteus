@@ -8,6 +8,7 @@ import picocli.CommandLine.Command;
  * 
  * Usage:
  *   proteus run [options]      - Run simulation
+ *   proteus assemble <file>    - Assemble source to binary
  *   proteus analyze [options]  - Analyze saved run
  *   proteus info               - Show version and config
  */
@@ -18,6 +19,7 @@ import picocli.CommandLine.Command;
     version = "Proteus 1.0.0",
     subcommands = {
         RunCommand.class,
+        AssembleCommand.class,
         AnalyzeCommand.class,
         InfoCommand.class,
         CommandLine.HelpCommand.class
