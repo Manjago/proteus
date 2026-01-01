@@ -432,7 +432,8 @@ public class Simulator {
                 
                 int parentId = parent != null ? parent.getId() : -1;
                 
-                // DEBUG: Check for overlaps BEFORE creating child (expensive - only first 10)
+                // DEBUG: Check for overlaps BEFORE creating child
+                boolean hasOverlap = false;
                 if (overlapWarnings < 10) {
                     int childStart = address;
                     int childEnd = address + actualSize;
@@ -444,13 +445,33 @@ public class Simulator {
                                     childStart, childEnd, 
                                     existing.getId(), existing.getStartAddr(), existingEnd,
                                     existing.isAlive());
+                            hasOverlap = true;
                             overlapWarnings++;
                             if (overlapWarnings >= 10) {
                                 log.warn("Further overlap warnings suppressed");
-                                break;
                             }
+                            break;  // Found overlap, no need to check more
                         }
                     }
+                } else {
+                    // Still check for overlap even after warnings suppressed
+                    int childStart = address;
+                    int childEnd = address + actualSize;
+                    for (Organism existing : aliveOrganisms) {
+                        int existingEnd = existing.getStartAddr() + existing.getSize();
+                        if (childStart < existingEnd && childEnd > existing.getStartAddr()) {
+                            hasOverlap = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // CRITICAL: Reject spawn if overlapping with existing organism!
+                if (hasOverlap) {
+                    rejectedSpawns++;
+                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                    parentState.clearPendingAllocation();
+                    return false;
                 }
                 
                 // Use actualSize (from pending allocation) not size (potentially mutated)
