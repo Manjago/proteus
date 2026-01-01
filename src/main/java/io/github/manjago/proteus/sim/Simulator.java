@@ -514,17 +514,56 @@ public class Simulator {
         int pendingCount = 0;
         int pendingTotal = 0;
         
+        // Detailed org analysis
+        int orgsWithMismatch = 0;
+        int totalMismatch = 0;
+        int orgsPartiallyFree = 0;
+        
         for (Organism org : aliveOrganisms) {
             orgSizes += org.getSize();
             if (org.getState().hasPendingAllocation()) {
                 pendingCount++;
                 pendingTotal += org.getState().getPendingAllocSize();
             }
+            
+            // Check if org's memory is actually marked as used
+            int actualUsed = memoryManager.countUsedInRange(org.getStartAddr(), org.getSize());
+            if (actualUsed != org.getSize()) {
+                orgsWithMismatch++;
+                totalMismatch += (org.getSize() - actualUsed);
+                if (actualUsed > 0 && actualUsed < org.getSize()) {
+                    orgsPartiallyFree++;
+                }
+            }
         }
         
         sb.append(String.format("  Alive orgs: %d, total size: %d%n", aliveOrganisms.size(), orgSizes));
         sb.append(String.format("  Pending allocations: %d, total: %d%n", pendingCount, pendingTotal));
         sb.append(String.format("  Expected = orgSizes + pending = %d + %d = %d%n", orgSizes, pendingTotal, expected));
+        
+        if (orgsWithMismatch > 0) {
+            sb.append(String.format("  ⚠️  Orgs with memory mismatch: %d (total diff: %d cells)%n", 
+                    orgsWithMismatch, totalMismatch));
+            sb.append(String.format("  ⚠️  Orgs partially free: %d%n", orgsPartiallyFree));
+        }
+        
+        // Check pending allocations consistency
+        int pendingMismatch = 0;
+        for (Organism org : aliveOrganisms) {
+            CpuState state = org.getState();
+            if (state.hasPendingAllocation()) {
+                int pendAddr = state.getPendingAllocAddr();
+                int pendSize = state.getPendingAllocSize();
+                int actualPending = memoryManager.countUsedInRange(pendAddr, pendSize);
+                if (actualPending != pendSize) {
+                    pendingMismatch += (pendSize - actualPending);
+                }
+            }
+        }
+        
+        if (pendingMismatch > 0) {
+            sb.append(String.format("  ⚠️  Pending allocation mismatch: %d cells%n", pendingMismatch));
+        }
         
         return sb.toString();
     }

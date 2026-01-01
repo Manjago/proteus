@@ -285,6 +285,22 @@ public class BitmapMemoryManager implements MemoryManager {
     }
     
     /**
+     * Count how many cells in range are actually marked as used.
+     * For debugging memory leaks.
+     */
+    public int countUsedInRange(int addr, int size) {
+        if (addr < 0 || size <= 0) return 0;
+        int count = 0;
+        int end = Math.min(addr + size, totalSize);
+        for (int i = addr; i < end; i++) {
+            if (ownership[i] != FREE) {
+                count++;
+            }
+        }
+        return count;
+    }
+    
+    /**
      * Get statistics string (for debugging).
      */
     public String getStatsString() {
