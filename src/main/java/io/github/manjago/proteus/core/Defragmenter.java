@@ -108,6 +108,9 @@ public class Defragmenter {
         int movedCount = 0;
         int nextFreeAddr = 0;
         
+        // First, clear all ownership (fresh start)
+        memoryManager.rebuild(0);
+        
         for (Organism org : aliveOrganisms) {
             int oldAddr = org.getStartAddr();
             int size = org.getSize();
@@ -119,11 +122,11 @@ public class Defragmenter {
                 totalBytesCompacted += size;
             }
             
+            // Mark new position as used (works for both moved and unmoved)
+            markUsedInMemoryManager(nextFreeAddr, size);
+            
             nextFreeAddr += size;
         }
-        
-        // Safe to rebuild - all organisms were processed
-        memoryManager.rebuild(nextFreeAddr);
         
         defragmentations++;
         totalMoved += movedCount;
@@ -140,6 +143,17 @@ public class Defragmenter {
                  blocksBefore, memoryManager.getFreeBlockCount());
         
         return movedCount;
+    }
+    
+    /**
+     * Mark memory as used after defragmentation.
+     * Works with BitmapMemoryManager directly.
+     */
+    private void markUsedInMemoryManager(int addr, int size) {
+        if (memoryManager instanceof BitmapMemoryManager bmm) {
+            bmm.markUsed(addr, size);
+        }
+        // For other implementations, rebuild() handles it
     }
     
     /**

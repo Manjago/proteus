@@ -61,14 +61,14 @@ public class Simulator {
         this.config = config;
         this.actualSeed = config.effectiveSeed();
         this.soup = new AtomicIntegerArray(config.soupSize());
-        this.memoryManager = new FreeListMemoryManager(config.soupSize());
+        this.memoryManager = new BitmapMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
         this.defragmenter = new Defragmenter(soup, memoryManager);
         this.cpu = new VirtualCPU(config.mutationRate(), new Random(actualSeed), createHandler());
         this.cpu.setMutationTracker(mutationTracker);
         
-        log.info("Simulator created (seed: {})", actualSeed);
+        log.info("Simulator created with BitmapMemoryManager (seed: {})", actualSeed);
     }
     
     /**

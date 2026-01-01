@@ -80,7 +80,8 @@
 | `SystemCallHandler` | Интерфейс для ALLOCATE, SPAWN, freePending |
 | `Organism` | Организм: геном, состояние, lifecycle |
 | `MemoryManager` | Интерфейс управления памятью (allocate/free/rebuild) |
-| `FreeListMemoryManager` | Реализация: Free List + First Fit + Coalesce |
+| `BitmapMemoryManager` | Реализация: ownership array, single source of truth |
+| `FreeListMemoryManager` | Устаревшая реализация (для сравнения) |
 | `Reaper` | Интерфейс жнеца (убийство + освобождение) |
 | `AgeBasedReaper` | Реализация: lazy deletion, убивает старейших |
 | `Defragmenter` | Компактификация памяти (two-pass algorithm) |
@@ -347,18 +348,38 @@ Adam — минимальный самовоспроизводящийся ор�
 
 ## 6. Управление памятью
 
-### 6.1. MemoryManager
+### 6.1. BitmapMemoryManager (Single Source of Truth)
 
-**Алгоритм: Free List + First Fit + Coalesce**
+**Принцип:** Каждая ячейка памяти знает своего владельца.
+
+```java
+int[] ownership = new int[soupSize];
+// ownership[i] = -1 (FREE) или allocationId (занято)
+```
+
+**Почему это лучше Free List:**
+
+| Проблема Free List | Решение в Bitmap |
+|-------------------|------------------|
+| Double-free → отрицательная память | free() на FREE ячейку = no-op |
+| Сложный merge/split блоков | Нет блоков — только ячейки |
+| Рассинхронизация с реальностью | ownership IS реальность |
+| Сложная отладка | Можно визуализировать ownership |
+
+**Операции:**
 
 | Метод | Сложность | Описание |
 |-------|-----------|----------|
-| `allocate(size)` | O(n) | First Fit — первый подходящий блок |
-| `free(addr, size)` | O(n) | Добавить + слить соседние |
-| `rebuild(usedEnd)` | O(1) | Очистить и создать один блок (для дефрагментации) |
-| `getFreeMemory()` | O(n) | Сумма всех свободных блоков |
-| `getLargestFreeBlock()` | O(n) | Максимальный непрерывный блок |
-| `getFragmentation()` | O(n) | 1 - (largest / total) |
+| `allocate(size)` | O(n) | First-fit scan, помечает allocId |
+| `free(addr, size)` | O(size) | Помечает FREE (no-op если уже FREE) |
+| `getUsedMemory()` | O(n) | Считает не-FREE ячейки |
+| `rebuild(usedEnd)` | O(n) | Очищает всё (для defrag) |
+| `markUsed(addr, size)` | O(size) | Помечает занятым (для defrag) |
+
+**Гарантии:**
+- ✅ `getUsedMemory() >= 0` ВСЕГДА
+- ✅ `getUsedMemory() + getFreeMemory() == getTotalMemory()` ВСЕГДА
+- ✅ Double-free безопасен (просто игнорируется)
 
 ### 6.2. Фрагментация
 
@@ -366,42 +387,20 @@ Adam — минимальный самовоспроизводящийся ор�
 ```
 fragmentation = 1 - (largestFreeBlock / totalFreeMemory)
 ```
-- 0.0 = вся свободная память непрерывна
-- 0.9 = 90% свободной памяти в мелких дырах
 
 ### 6.3. Дефрагментация (Defragmenter)
 
-**Триггер:** `fragmentation > 50% AND largestFree < minRequired`
-
-**Алгоритм (Two-Pass, All-or-Nothing):**
+**Алгоритм с BitmapMemoryManager:**
 
 ```
-PASS 1: Валидация
-  for each organism:
-    if invalid (size <= 0 or > 1000): ABORT
-    totalSize += size
-  if totalSize > soupSize: ABORT
-
-PASS 2: Перемещение (только если Pass 1 успешен)
-  sort organisms by startAddr
-  nextFreeAddr = 0
-  for each organism:
-    if oldAddr != nextFreeAddr:
-      copy genome from oldAddr to nextFreeAddr
-      organism.setStartAddr(nextFreeAddr)
-    nextFreeAddr += size
-  
-  memoryManager.rebuild(nextFreeAddr)  // Один свободный блок в конце
+1. rebuild(0) — очищает ВСЮ ownership
+2. Для каждого организма:
+   a. Копируем геном в новую позицию
+   b. markUsed(newAddr, size) — помечаем как занятый
+3. Всё что не помечено — автоматически FREE
 ```
 
-**Почему Two-Pass:**
-- Partial defrag ломал free list (moved organisms, но не rebuild)
-- "Всё или ничего" гарантирует консистентность
-
-**Position-Independence гарантирует:**
-- IP остаётся относительным (не нужно патчить)
-- JMP/JMPZ/JMPN используют offset'ы
-- GETADDR даст новый адрес после перемещения
+**Position-Independence гарантирует** корректную работу после перемещения.
 
 ---
 
@@ -604,7 +603,8 @@ java -jar proteus.jar info
 - [x] **Reaper Queue Cleanup** — периодическая очистка мёртвых из очереди (lazy deletion)
 - [x] **Heap Monitoring** — мониторинг JVM heap в статистике
 - [x] **OOM Handling** — логирование OutOfMemoryError с диагностикой
-- [x] **Memory Optimization** — заменили `List<Organism> organisms` на счётчик (экономия 100+ bytes/spawn)
+- [x] **Memory Optimization** — заменили `List<Organism> organisms` на счётчик
+- [x] **BitmapMemoryManager** — рефакторинг: single source of truth для памяти
 
 ### 🚧 В работе (Stage 4: Persistence)
 - [ ] **PersistenceManager** — H2 MVStore для сохранения состояния
@@ -619,6 +619,16 @@ java -jar proteus.jar info
 - [ ] Diversity metrics
 - [ ] Web UI для визуализации
 - [ ] Export в CSV/JSON
+
+### 🔮 Идеи (Stage 6+: Multiplayer)
+
+- [ ] **Memory Visualization** — цветная карта soup'а:
+  - Каждый игрок = свой цвет
+  - Lineage tracking (Adam → мутанты → потомки игрока)
+  - Real-time обновление через WebSocket
+  - BitmapMemoryManager.ownership[] → canvas/WebGL
+- [ ] Player organisms injection
+- [ ] Competition metrics (территория, выживаемость)
 
 ---
 
