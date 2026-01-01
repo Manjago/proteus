@@ -103,6 +103,49 @@ public class BitmapMemoryManager implements MemoryManager {
     }
     
     /**
+     * Get the allocId of the last successful allocation.
+     * Used to track ownership of pending allocations.
+     */
+    public int getLastAllocId() {
+        return nextAllocationId - 1;
+    }
+    
+    /**
+     * Free only cells that belong to specific allocId.
+     * Used when spawn is rejected but part of pending memory was overwritten.
+     * 
+     * @param addr start address
+     * @param size expected size
+     * @param allocId the allocation ID to free
+     * @return number of cells actually freed
+     */
+    public int freeByAllocId(int addr, int size, int allocId) {
+        if (addr < 0 || size <= 0 || allocId < 0) {
+            return 0;
+        }
+        
+        int freed = 0;
+        int end = Math.min(addr + size, totalSize);
+        
+        for (int i = addr; i < end; i++) {
+            if (ownership[i] == allocId) {
+                ownership[i] = FREE;
+                freed++;
+            }
+        }
+        
+        if (freed > 0) {
+            totalFrees++;
+            if (addr < nextFitPosition) {
+                nextFitPosition = addr;
+            }
+            log.trace("freeByAllocId({}, {}, {}): freed {} cells", addr, size, allocId, freed);
+        }
+        
+        return freed;
+    }
+    
+    /**
      * Find contiguous free block of given size, starting from specified position.
      * 
      * @param size required size

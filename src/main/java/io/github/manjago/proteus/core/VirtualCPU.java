@@ -298,7 +298,8 @@ public final class VirtualCPU {
         if (state.hasPendingAllocation()) {
             log.debug("ALLOCATE while pending exists - freeing old allocation: {} cells at addr {}",
                     state.getPendingAllocSize(), state.getPendingAllocAddr());
-            syscallHandler.freePending(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            syscallHandler.freePending(state.getPendingAllocAddr(), 
+                    state.getPendingAllocSize(), state.getPendingAllocId());
             state.clearPendingAllocation();
         }
         
@@ -307,8 +308,9 @@ public final class VirtualCPU {
         
         // Track pending allocation for cleanup if organism dies before SPAWN
         if (allocatedAddr >= 0) {
-            state.setPendingAllocation(allocatedAddr, requestedSize);
-            log.trace("ALLOCATE: {} cells at addr {}", requestedSize, allocatedAddr);
+            int allocId = syscallHandler.getLastAllocId();
+            state.setPendingAllocation(allocatedAddr, requestedSize, allocId);
+            log.trace("ALLOCATE: {} cells at addr {} (allocId={})", requestedSize, allocatedAddr, allocId);
         }
         
         state.advanceIp();

@@ -236,10 +236,17 @@ public class Simulator {
         reaper.unregister(org);
         
         // Free pending allocation (memory allocated for child but not spawned)
-        // Use freeIfOwned to avoid freeing another organism's memory
+        // Use freeByAllocId to free only OUR cells (not alien memory)
         CpuState state = org.getState();
         if (state.hasPendingAllocation()) {
-            memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            int allocId = state.getPendingAllocId();
+            if (allocId >= 0) {
+                memoryManager.freeByAllocId(state.getPendingAllocAddr(), 
+                        state.getPendingAllocSize(), allocId);
+            } else {
+                // Fallback for old pending without allocId
+                memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            }
             state.clearPendingAllocation();
         }
         
@@ -273,8 +280,14 @@ public class Simulator {
         for (Organism org : aliveOrganisms) {
             CpuState state = org.getState();
             if (state.hasPendingAllocation()) {
-                // Use freeIfOwned - pending may have been taken by another organism
-                memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+                // Use freeByAllocId - only free OUR cells
+                int allocId = state.getPendingAllocId();
+                if (allocId >= 0) {
+                    memoryManager.freeByAllocId(state.getPendingAllocAddr(), 
+                            state.getPendingAllocSize(), allocId);
+                } else {
+                    memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+                }
                 state.clearPendingAllocation();
                 cleared++;
             }
@@ -352,10 +365,16 @@ public class Simulator {
             }
             
             @Override
+            public int getLastAllocId() {
+                return memoryManager.getLastAllocId();
+            }
+            
+            @Override
             public boolean spawn(int address, int size, CpuState parentState) {
                 // Get pending allocation info for proper cleanup
                 int pendingAddr = parentState.getPendingAllocAddr();
                 int pendingSize = parentState.getPendingAllocSize();
+                int pendingAllocId = parentState.getPendingAllocId();
                 
                 // If no valid pending allocation, spawn fails
                 // (ALLOCATE must succeed before SPAWN can work)
@@ -370,8 +389,11 @@ public class Simulator {
                     log.debug("Spawn rejected: pending [{},{}) has mixed ownership (organism wrote over alien memory)",
                             pendingAddr, pendingAddr + pendingSize);
                     rejectedSpawns++;
+                    // Free ONLY cells that still belong to our allocation (by allocId)
+                    if (pendingAllocId >= 0) {
+                        memoryManager.freeByAllocId(pendingAddr, pendingSize, pendingAllocId);
+                    }
                     parentState.clearPendingAllocation();
-                    // Don't free - memory might belong to someone else!
                     return false;
                 }
                 
@@ -452,13 +474,19 @@ public class Simulator {
             }
             
             @Override
-            public void freePending(int address, int size) {
+            public void freePending(int address, int size, int allocId) {
                 if (address >= 0 && size > 0 && address + size <= config.soupSize()) {
-                    // Use freeIfOwned to avoid freeing another organism's memory
-                    if (memoryManager.freeIfOwned(address, size)) {
-                        log.debug("Freed pending allocation: {} cells at addr {}", size, address);
+                    // Use freeByAllocId for precise cleanup
+                    if (allocId >= 0) {
+                        int freed = memoryManager.freeByAllocId(address, size, allocId);
+                        log.debug("Freed pending allocation: {} of {} cells at addr {}", freed, size, address);
                     } else {
-                        log.debug("Pending at {} already taken by another organism", address);
+                        // Fallback
+                        if (memoryManager.freeIfOwned(address, size)) {
+                            log.debug("Freed pending allocation: {} cells at addr {}", size, address);
+                        } else {
+                            log.debug("Pending at {} already taken by another organism", address);
+                        }
                     }
                 }
             }

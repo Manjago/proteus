@@ -83,10 +83,16 @@ public class AgeBasedReaper implements Reaper {
         reapCount++;
         
         // Free pending allocation (memory allocated for child but not spawned)
-        // Use freeIfOwned to avoid freeing another organism's memory
+        // Use freeByAllocId to free only OUR cells (not alien memory)
         CpuState state = victim.getState();
         if (state.hasPendingAllocation()) {
-            memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            int allocId = state.getPendingAllocId();
+            if (allocId >= 0) {
+                memoryManager.freeByAllocId(state.getPendingAllocAddr(), 
+                        state.getPendingAllocSize(), allocId);
+            } else {
+                memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            }
             state.clearPendingAllocation();
         }
         

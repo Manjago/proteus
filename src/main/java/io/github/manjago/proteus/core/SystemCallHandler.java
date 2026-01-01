@@ -32,9 +32,28 @@ public interface SystemCallHandler {
      * 
      * @param address address of the pending allocation
      * @param size size of the pending allocation
+     * @param allocId allocId for precise cleanup (-1 if unknown)
      */
-    default void freePending(int address, int size) {
+    default void freePending(int address, int size, int allocId) {
         // Default: no-op for backward compatibility
+    }
+    
+    /**
+     * @deprecated Use freePending(int, int, int) instead
+     */
+    @Deprecated
+    default void freePending(int address, int size) {
+        freePending(address, size, -1);
+    }
+    
+    /**
+     * Get the allocId of the last successful allocation.
+     * Used to track ownership for safe cleanup.
+     * 
+     * @return allocId, or -1 if not available
+     */
+    default int getLastAllocId() {
+        return -1;
     }
     
     /**

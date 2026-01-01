@@ -97,4 +97,19 @@ public interface MemoryManager {
         free(addr, size);
         return true;
     }
+    
+    /**
+     * Free only cells that belong to specific allocId.
+     * Used when spawn is rejected but part of pending memory was overwritten.
+     * Default implementation falls back to freeIfOwned().
+     * 
+     * @param addr start address
+     * @param size expected size
+     * @param allocId the allocation ID to free
+     * @return number of cells actually freed
+     */
+    default int freeByAllocId(int addr, int size, int allocId) {
+        freeIfOwned(addr, size);
+        return size;  // Approximation
+    }
 }

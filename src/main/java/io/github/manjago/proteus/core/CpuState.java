@@ -44,6 +44,7 @@ public final class CpuState {
      */
     private int pendingAllocAddr = -1;
     private int pendingAllocSize = 0;
+    private int pendingAllocId = -1;  // BitmapMM allocId for safe cleanup
     
     public CpuState() {
         this.registers = new int[REGISTER_COUNT];
@@ -73,6 +74,7 @@ public final class CpuState {
         this.age = other.age;
         this.pendingAllocAddr = other.pendingAllocAddr;
         this.pendingAllocSize = other.pendingAllocSize;
+        this.pendingAllocId = other.pendingAllocId;
     }
     
     // ========== Register Access ==========
@@ -192,9 +194,10 @@ public final class CpuState {
     /**
      * Set pending allocation when ALLOCATE succeeds.
      */
-    public void setPendingAllocation(int addr, int size) {
+    public void setPendingAllocation(int addr, int size, int allocId) {
         this.pendingAllocAddr = addr;
         this.pendingAllocSize = size;
+        this.pendingAllocId = allocId;
     }
     
     /**
@@ -203,6 +206,7 @@ public final class CpuState {
     public void clearPendingAllocation() {
         this.pendingAllocAddr = -1;
         this.pendingAllocSize = 0;
+        this.pendingAllocId = -1;
     }
     
     /**
@@ -218,6 +222,10 @@ public final class CpuState {
     
     public int getPendingAllocSize() {
         return pendingAllocSize;
+    }
+    
+    public int getPendingAllocId() {
+        return pendingAllocId;
     }
     
     @Override
