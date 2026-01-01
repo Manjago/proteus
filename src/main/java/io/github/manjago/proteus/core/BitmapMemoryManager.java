@@ -141,6 +141,12 @@ public class BitmapMemoryManager implements MemoryManager {
             // If already FREE - do nothing (prevents double-free issues)
         }
         
+        // Optimization: if freeing before current position, move back
+        // This helps reuse holes instead of always allocating forward
+        if (freed > 0 && addr < nextFitPosition) {
+            nextFitPosition = addr;
+        }
+        
         if (freed > 0) {
             totalFrees++;
             log.trace("Freed {} cells at addr {} (requested {})", freed, addr, size);
