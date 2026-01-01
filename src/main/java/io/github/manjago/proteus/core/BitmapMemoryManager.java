@@ -310,6 +310,33 @@ public class BitmapMemoryManager implements MemoryManager {
     }
     
     /**
+     * Check if entire range belongs to a SINGLE owner (same allocId).
+     * Used to verify spawn didn't write over someone else's memory.
+     * 
+     * @param addr start address
+     * @param size block size
+     * @return true if all cells have same non-FREE owner
+     */
+    public boolean hasConsistentOwnership(int addr, int size) {
+        if (addr < 0 || size <= 0 || addr + size > totalSize) {
+            return false;
+        }
+        
+        int expectedId = ownership[addr];
+        if (expectedId == FREE) {
+            return false;  // First cell is free - not owned
+        }
+        
+        for (int i = addr + 1; i < addr + size; i++) {
+            if (ownership[i] != expectedId) {
+                return false;  // Mixed ownership
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
      * Get owner of a specific cell (for debugging).
      * 
      * @param addr cell address

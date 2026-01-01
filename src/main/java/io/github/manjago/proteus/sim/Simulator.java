@@ -365,37 +365,36 @@ public class Simulator {
                     return false;
                 }
                 
-                // CRITICAL: Verify pending memory is still ours (not freed/reallocated)
-                int actualUsed = memoryManager.countUsedInRange(pendingAddr, pendingSize);
-                if (actualUsed != pendingSize) {
-                    log.warn("Pending memory corrupted! addr={}, size={}, actualUsed={} - rejecting spawn",
-                            pendingAddr, pendingSize, actualUsed);
+                // CRITICAL: Verify pending memory has consistent ownership
+                // If organism's COPY wrote over someone else's memory, ownership will be mixed
+                if (!memoryManager.hasConsistentOwnership(pendingAddr, pendingSize)) {
+                    if (overlapWarnings < 10) {
+                        log.warn("Spawn rejected: pending [{},{}) has mixed ownership (organism wrote over alien memory)",
+                                pendingAddr, pendingAddr + pendingSize);
+                        overlapWarnings++;
+                    }
                     rejectedSpawns++;
-                    parentState.clearPendingAllocation();  // Clear invalid pending
+                    parentState.clearPendingAllocation();
+                    // Don't free - memory might belong to someone else!
                     return false;
                 }
                 
                 // Validate that spawn parameters match pending allocation
-                // This prevents memory corruption from mutated registers
                 if (address != pendingAddr) {
                     rejectedSpawns++;
-                    // Use freeIfOwned to avoid freeing another organism's memory!
-                    if (!memoryManager.freeIfOwned(pendingAddr, pendingSize)) {
-                        log.warn("Spawn rejected: address mismatch, but pending memory already taken! " +
-                                "(spawn={}, pending={})", address, pendingAddr);
-                    }
-                    log.debug("Spawn rejected: address mismatch (spawn={}, pending={})", address, pendingAddr);
+                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                    parentState.clearPendingAllocation();
                     return false;
                 }
                 
                 // Use pendingSize for the organism, not the potentially mutated size
-                // This ensures we track the actual allocated memory
                 int actualSize = pendingSize;
                 
                 // Validate size is reasonable
                 if (actualSize <= 0 || actualSize > 1000) {
                     rejectedSpawns++;
                     memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                    parentState.clearPendingAllocation();
                     return false;
                 }
                 
@@ -403,12 +402,12 @@ public class Simulator {
                 if (address + actualSize > config.soupSize()) {
                     rejectedSpawns++;
                     memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                    parentState.clearPendingAllocation();
                     return false;
                 }
                 
                 // Check population limit
                 if (aliveCount >= config.maxOrganisms()) {
-                    // Too many organisms - trigger reaper to make room
                     int killed = reaper.reap() != null ? 1 : 0;
                     if (killed > 0) {
                         aliveOrganisms.removeIf(o -> !o.isAlive());
@@ -417,11 +416,12 @@ public class Simulator {
                     if (aliveCount >= config.maxOrganisms()) {
                         rejectedSpawns++;
                         memoryManager.freeIfOwned(pendingAddr, pendingSize);
+                        parentState.clearPendingAllocation();
                         return false;
                     }
                 }
                 
-                // Find parent (search only alive organisms - parent must be alive)
+                // Find parent
                 Organism parent = null;
                 for (Organism o : aliveOrganisms) {
                     if (o.getState() == parentState) {
@@ -429,52 +429,12 @@ public class Simulator {
                         break;
                     }
                 }
-                
                 int parentId = parent != null ? parent.getId() : -1;
                 
-                // DEBUG: Check for overlaps BEFORE creating child
-                boolean hasOverlap = false;
-                if (overlapWarnings < 10) {
-                    int childStart = address;
-                    int childEnd = address + actualSize;
-                    for (Organism existing : aliveOrganisms) {
-                        int existingEnd = existing.getStartAddr() + existing.getSize();
-                        if (childStart < existingEnd && childEnd > existing.getStartAddr()) {
-                            // Overlap detected!
-                            log.warn("OVERLAP at spawn! New child [{},{}) overlaps with Org#{} [{},{}) - isAlive={}",
-                                    childStart, childEnd, 
-                                    existing.getId(), existing.getStartAddr(), existingEnd,
-                                    existing.isAlive());
-                            hasOverlap = true;
-                            overlapWarnings++;
-                            if (overlapWarnings >= 10) {
-                                log.warn("Further overlap warnings suppressed");
-                            }
-                            break;  // Found overlap, no need to check more
-                        }
-                    }
-                } else {
-                    // Still check for overlap even after warnings suppressed
-                    int childStart = address;
-                    int childEnd = address + actualSize;
-                    for (Organism existing : aliveOrganisms) {
-                        int existingEnd = existing.getStartAddr() + existing.getSize();
-                        if (childStart < existingEnd && childEnd > existing.getStartAddr()) {
-                            hasOverlap = true;
-                            break;
-                        }
-                    }
-                }
+                // Clear pending - ownership transfers to child organism
+                parentState.clearPendingAllocation();
                 
-                // CRITICAL: Reject spawn if overlapping with existing organism!
-                if (hasOverlap) {
-                    rejectedSpawns++;
-                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
-                    parentState.clearPendingAllocation();
-                    return false;
-                }
-                
-                // Use actualSize (from pending allocation) not size (potentially mutated)
+                // Create child organism
                 Organism child = new Organism(
                     totalOrganismsCreated,
                     address,
