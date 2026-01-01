@@ -231,10 +231,14 @@ public class RunCommand implements Callable<Integer> {
         System.out.printf("   Fragmentation: %.1f%%  |  Largest free: %,d%n",
                 stats.fragmentation() * 100, stats.largestFreeBlock());
         if (stats.defragmentations() > 0) {
-            System.out.printf("   Defragmentations: %,d%n", stats.defragmentations());
+            double defragRate = stats.defragmentations() * 10000.0 / stats.totalCycles();
+            System.out.printf("   Defragmentations: %,d (%.1f per 10K cycles)%n", 
+                    stats.defragmentations(), defragRate);
         }
-        if (stats.memoryLeak() > 0) {
+        if (stats.memoryLeak() != 0) {
             System.out.printf("   ⚠️  Memory leak: %,d cells%n", stats.memoryLeak());
+        } else {
+            System.out.println("   Memory leak: 0 ✓");
         }
         System.out.println();
         
