@@ -46,6 +46,7 @@ public class Simulator {
     private int maxAlive = 0;    // Peak population
     private int defragmentations = 0;
     private int rejectedSpawns = 0;  // Spawns rejected due to invalid params
+    private int overlapWarnings = 0;  // Counter for overlap detection (debug)
     
     // Control
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -416,6 +417,27 @@ public class Simulator {
                 }
                 
                 int parentId = parent != null ? parent.getId() : -1;
+                
+                // DEBUG: Check for overlaps BEFORE creating child (expensive - only first 10)
+                if (overlapWarnings < 10) {
+                    int childStart = address;
+                    int childEnd = address + actualSize;
+                    for (Organism existing : aliveOrganisms) {
+                        int existingEnd = existing.getStartAddr() + existing.getSize();
+                        if (childStart < existingEnd && childEnd > existing.getStartAddr()) {
+                            // Overlap detected!
+                            log.warn("OVERLAP at spawn! New child [{},{}) overlaps with Org#{} [{},{}) - isAlive={}",
+                                    childStart, childEnd, 
+                                    existing.getId(), existing.getStartAddr(), existingEnd,
+                                    existing.isAlive());
+                            overlapWarnings++;
+                            if (overlapWarnings >= 10) {
+                                log.warn("Further overlap warnings suppressed");
+                                break;
+                            }
+                        }
+                    }
+                }
                 
                 // Use actualSize (from pending allocation) not size (potentially mutated)
                 Organism child = new Organism(
