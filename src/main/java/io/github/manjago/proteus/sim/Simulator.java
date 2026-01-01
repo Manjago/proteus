@@ -46,7 +46,6 @@ public class Simulator {
     private int maxAlive = 0;    // Peak population
     private int defragmentations = 0;
     private int rejectedSpawns = 0;  // Spawns rejected due to invalid params
-    private int overlapWarnings = 0;  // Counter for overlap detection (debug)
     
     // Control
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -368,11 +367,8 @@ public class Simulator {
                 // CRITICAL: Verify pending memory has consistent ownership
                 // If organism's COPY wrote over someone else's memory, ownership will be mixed
                 if (!memoryManager.hasConsistentOwnership(pendingAddr, pendingSize)) {
-                    if (overlapWarnings < 10) {
-                        log.warn("Spawn rejected: pending [{},{}) has mixed ownership (organism wrote over alien memory)",
-                                pendingAddr, pendingAddr + pendingSize);
-                        overlapWarnings++;
-                    }
+                    log.debug("Spawn rejected: pending [{},{}) has mixed ownership (organism wrote over alien memory)",
+                            pendingAddr, pendingAddr + pendingSize);
                     rejectedSpawns++;
                     parentState.clearPendingAllocation();
                     // Don't free - memory might belong to someone else!

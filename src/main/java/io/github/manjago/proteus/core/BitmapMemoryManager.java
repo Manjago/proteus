@@ -188,7 +188,7 @@ public class BitmapMemoryManager implements MemoryManager {
         
         for (int i = addr + 1; i < addr + size; i++) {
             if (ownership[i] != expectedId) {
-                log.warn("freeIfOwned({}, {}): mixed ownership at cell {} (expected {}, found {})",
+                log.debug("freeIfOwned({}, {}): mixed ownership at cell {} (expected {}, found {})",
                         addr, size, i, expectedId, ownership[i]);
                 return false;  // Mixed ownership - don't free!
             }
