@@ -237,9 +237,10 @@ public class Simulator {
         reaper.unregister(org);
         
         // Free pending allocation (memory allocated for child but not spawned)
+        // Use freeIfOwned to avoid freeing another organism's memory
         CpuState state = org.getState();
         if (state.hasPendingAllocation()) {
-            memoryManager.free(state.getPendingAllocAddr(), state.getPendingAllocSize());
+            memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
             state.clearPendingAllocation();
         }
         
@@ -273,8 +274,8 @@ public class Simulator {
         for (Organism org : aliveOrganisms) {
             CpuState state = org.getState();
             if (state.hasPendingAllocation()) {
-                // Free the memory first (important if defrag aborts!)
-                memoryManager.free(state.getPendingAllocAddr(), state.getPendingAllocSize());
+                // Use freeIfOwned - pending may have been taken by another organism
+                memoryManager.freeIfOwned(state.getPendingAllocAddr(), state.getPendingAllocSize());
                 state.clearPendingAllocation();
                 cleared++;
             }
@@ -368,8 +369,11 @@ public class Simulator {
                 // This prevents memory corruption from mutated registers
                 if (address != pendingAddr) {
                     rejectedSpawns++;
-                    // Free the pending allocation since it won't be used
-                    memoryManager.free(pendingAddr, pendingSize);
+                    // Use freeIfOwned to avoid freeing another organism's memory!
+                    if (!memoryManager.freeIfOwned(pendingAddr, pendingSize)) {
+                        log.warn("Spawn rejected: address mismatch, but pending memory already taken! " +
+                                "(spawn={}, pending={})", address, pendingAddr);
+                    }
                     log.debug("Spawn rejected: address mismatch (spawn={}, pending={})", address, pendingAddr);
                     return false;
                 }
@@ -381,14 +385,14 @@ public class Simulator {
                 // Validate size is reasonable
                 if (actualSize <= 0 || actualSize > 1000) {
                     rejectedSpawns++;
-                    memoryManager.free(pendingAddr, pendingSize);
+                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
                     return false;
                 }
                 
                 // Check bounds
                 if (address + actualSize > config.soupSize()) {
                     rejectedSpawns++;
-                    memoryManager.free(pendingAddr, pendingSize);
+                    memoryManager.freeIfOwned(pendingAddr, pendingSize);
                     return false;
                 }
                 
@@ -402,7 +406,7 @@ public class Simulator {
                     }
                     if (aliveCount >= config.maxOrganisms()) {
                         rejectedSpawns++;
-                        memoryManager.free(pendingAddr, pendingSize);
+                        memoryManager.freeIfOwned(pendingAddr, pendingSize);
                         return false;
                     }
                 }
@@ -463,8 +467,12 @@ public class Simulator {
             @Override
             public void freePending(int address, int size) {
                 if (address >= 0 && size > 0 && address + size <= config.soupSize()) {
-                    memoryManager.free(address, size);
-                    log.debug("Freed pending allocation: {} cells at addr {}", size, address);
+                    // Use freeIfOwned to avoid freeing another organism's memory
+                    if (memoryManager.freeIfOwned(address, size)) {
+                        log.debug("Freed pending allocation: {} cells at addr {}", size, address);
+                    } else {
+                        log.debug("Pending at {} already taken by another organism", address);
+                    }
                 }
             }
         };

@@ -155,6 +155,50 @@ public class BitmapMemoryManager implements MemoryManager {
         }
     }
     
+    /**
+     * Safe free: only releases memory if ALL cells in range belong to the SAME owner.
+     * This prevents accidentally freeing another organism's memory when pending
+     * allocation overlaps with an existing organism.
+     * 
+     * @param addr start address
+     * @param size block size  
+     * @return true if freed, false if range has mixed ownership or is already free
+     */
+    @Override
+    public boolean freeIfOwned(int addr, int size) {
+        if (addr < 0 || size <= 0 || addr + size > totalSize) {
+            return false;
+        }
+        
+        // Check that ALL cells have the SAME allocId (not FREE, not mixed)
+        int expectedId = ownership[addr];
+        if (expectedId == FREE) {
+            log.trace("freeIfOwned({}, {}): first cell already FREE", addr, size);
+            return false;  // Already free
+        }
+        
+        for (int i = addr + 1; i < addr + size; i++) {
+            if (ownership[i] != expectedId) {
+                log.warn("freeIfOwned({}, {}): mixed ownership at cell {} (expected {}, found {})",
+                        addr, size, i, expectedId, ownership[i]);
+                return false;  // Mixed ownership - don't free!
+            }
+        }
+        
+        // All cells belong to same owner - safe to free
+        for (int i = addr; i < addr + size; i++) {
+            ownership[i] = FREE;
+        }
+        
+        if (addr < nextFitPosition) {
+            nextFitPosition = addr;
+        }
+        
+        totalFrees++;
+        log.trace("freeIfOwned({}, {}): freed allocId={}", addr, size, expectedId);
+        return true;
+    }
+    
     @Override
     public int getFreeMemory() {
         int count = 0;

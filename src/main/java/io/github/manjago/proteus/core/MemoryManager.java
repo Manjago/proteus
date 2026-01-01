@@ -84,4 +84,17 @@ public interface MemoryManager {
      * @param usedEnd address where used memory ends (free space starts here)
      */
     void rebuild(int usedEnd);
+    
+    /**
+     * Safe free: only releases memory if the range belongs to a single owner.
+     * Default implementation falls back to regular free().
+     * 
+     * @param addr start address
+     * @param size block size
+     * @return true if freed, false if ownership check failed
+     */
+    default boolean freeIfOwned(int addr, int size) {
+        free(addr, size);
+        return true;
+    }
 }
