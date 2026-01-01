@@ -646,6 +646,9 @@ public class Simulator {
         
         // Check for overlaps between orgs and pending
         int orgPendingOverlaps = 0;
+        int orgPendingOverlapCells = 0;  // Total overlapping cells (double-counted)
+        List<String> overlapDetails = new ArrayList<>();
+        
         for (Organism org : aliveOrganisms) {
             CpuState state = org.getState();
             if (state.hasPendingAllocation()) {
@@ -656,16 +659,41 @@ public class Simulator {
                 // Check against all other orgs
                 for (Organism other : aliveOrganisms) {
                     if (other == org) continue;
-                    int otherEnd = other.getStartAddr() + other.getSize();
+                    int otherStart = other.getStartAddr();
+                    int otherEnd = otherStart + other.getSize();
+                    
                     // Check overlap
-                    if (pendAddr < otherEnd && pendEnd > other.getStartAddr()) {
+                    if (pendAddr < otherEnd && pendEnd > otherStart) {
                         orgPendingOverlaps++;
+                        // Calculate overlap size
+                        int overlapStart = Math.max(pendAddr, otherStart);
+                        int overlapEnd = Math.min(pendEnd, otherEnd);
+                        int overlapSize = overlapEnd - overlapStart;
+                        orgPendingOverlapCells += overlapSize;
+                        
+                        if (overlapDetails.size() < 5) {
+                            overlapDetails.add(String.format(
+                                "Org#%d pending [%d,%d) overlaps Org#%d [%d,%d) by %d cells",
+                                org.getId(), pendAddr, pendEnd,
+                                other.getId(), otherStart, otherEnd, overlapSize));
+                        }
                     }
                 }
             }
         }
+        
         if (orgPendingOverlaps > 0) {
-            sb.append(String.format("  ⚠️  Org-Pending overlaps: %d%n", orgPendingOverlaps));
+            sb.append(String.format("  ⚠️  Org-Pending overlaps: %d (total %d cells double-counted)%n", 
+                    orgPendingOverlaps, orgPendingOverlapCells));
+            for (String detail : overlapDetails) {
+                sb.append(String.format("      %s%n", detail));
+            }
+            
+            // Check if this explains the leak
+            if (leak < 0 && Math.abs(leak) <= orgPendingOverlapCells) {
+                sb.append(String.format("  ℹ️  Leak of %d explained by %d double-counted overlap cells%n",
+                        leak, orgPendingOverlapCells));
+            }
         }
         
         return sb.toString();
