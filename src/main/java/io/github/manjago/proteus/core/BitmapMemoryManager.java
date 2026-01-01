@@ -75,6 +75,15 @@ public class BitmapMemoryManager implements MemoryManager {
             return -1;
         }
         
+        // SANITY CHECK: verify the block is actually free
+        for (int i = start; i < start + size; i++) {
+            if (ownership[i] != FREE) {
+                log.error("BUG: findFreeBlock returned non-free block! addr={}, cell={}, owner={}", 
+                        start, i, ownership[i]);
+                return -1;  // Don't corrupt!
+            }
+        }
+        
         // Mark cells as owned by this allocation
         int allocId = nextAllocationId++;
         for (int i = start; i < start + size; i++) {

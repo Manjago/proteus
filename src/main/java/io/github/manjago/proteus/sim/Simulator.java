@@ -365,6 +365,16 @@ public class Simulator {
                     return false;
                 }
                 
+                // CRITICAL: Verify pending memory is still ours (not freed/reallocated)
+                int actualUsed = memoryManager.countUsedInRange(pendingAddr, pendingSize);
+                if (actualUsed != pendingSize) {
+                    log.warn("Pending memory corrupted! addr={}, size={}, actualUsed={} - rejecting spawn",
+                            pendingAddr, pendingSize, actualUsed);
+                    rejectedSpawns++;
+                    parentState.clearPendingAllocation();  // Clear invalid pending
+                    return false;
+                }
+                
                 // Validate that spawn parameters match pending allocation
                 // This prevents memory corruption from mutated registers
                 if (address != pendingAddr) {
