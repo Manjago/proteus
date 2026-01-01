@@ -519,6 +519,9 @@ public class Simulator {
         int totalMismatch = 0;
         int orgsPartiallyFree = 0;
         
+        // Collect problematic orgs for detailed report
+        List<String> problemOrgs = new ArrayList<>();
+        
         for (Organism org : aliveOrganisms) {
             orgSizes += org.getSize();
             if (org.getState().hasPendingAllocation()) {
@@ -533,6 +536,10 @@ public class Simulator {
                 totalMismatch += (org.getSize() - actualUsed);
                 if (actualUsed > 0 && actualUsed < org.getSize()) {
                     orgsPartiallyFree++;
+                    if (problemOrgs.size() < 5) {
+                        problemOrgs.add(String.format("Org#%d addr=%d size=%d actualUsed=%d",
+                                org.getId(), org.getStartAddr(), org.getSize(), actualUsed));
+                    }
                 }
             }
         }
@@ -545,6 +552,9 @@ public class Simulator {
             sb.append(String.format("  ⚠️  Orgs with memory mismatch: %d (total diff: %d cells)%n", 
                     orgsWithMismatch, totalMismatch));
             sb.append(String.format("  ⚠️  Orgs partially free: %d%n", orgsPartiallyFree));
+            for (String prob : problemOrgs) {
+                sb.append(String.format("      %s%n", prob));
+            }
         }
         
         // Check pending allocations consistency
@@ -563,6 +573,54 @@ public class Simulator {
         
         if (pendingMismatch > 0) {
             sb.append(String.format("  ⚠️  Pending allocation mismatch: %d cells%n", pendingMismatch));
+        }
+        
+        // Check for OVERLAPS between organisms
+        int overlaps = 0;
+        List<Organism> sortedOrgs = new ArrayList<>(aliveOrganisms);
+        sortedOrgs.sort((a, b) -> Integer.compare(a.getStartAddr(), b.getStartAddr()));
+        for (int i = 0; i < sortedOrgs.size() - 1; i++) {
+            Organism curr = sortedOrgs.get(i);
+            Organism next = sortedOrgs.get(i + 1);
+            int currEnd = curr.getStartAddr() + curr.getSize();
+            if (currEnd > next.getStartAddr()) {
+                overlaps++;
+                if (overlaps <= 3) {
+                    sb.append(String.format("  ⚠️  OVERLAP: Org#%d [%d,%d) vs Org#%d [%d,%d)%n",
+                            curr.getId(), curr.getStartAddr(), currEnd,
+                            next.getId(), next.getStartAddr(), next.getStartAddr() + next.getSize()));
+                }
+            }
+        }
+        if (overlaps > 3) {
+            sb.append(String.format("  ⚠️  ... and %d more overlaps%n", overlaps - 3));
+        }
+        if (overlaps > 0) {
+            sb.append(String.format("  ⚠️  Total organism overlaps: %d%n", overlaps));
+        }
+        
+        // Check for overlaps between orgs and pending
+        int orgPendingOverlaps = 0;
+        for (Organism org : aliveOrganisms) {
+            CpuState state = org.getState();
+            if (state.hasPendingAllocation()) {
+                int pendAddr = state.getPendingAllocAddr();
+                int pendSize = state.getPendingAllocSize();
+                int pendEnd = pendAddr + pendSize;
+                
+                // Check against all other orgs
+                for (Organism other : aliveOrganisms) {
+                    if (other == org) continue;
+                    int otherEnd = other.getStartAddr() + other.getSize();
+                    // Check overlap
+                    if (pendAddr < otherEnd && pendEnd > other.getStartAddr()) {
+                        orgPendingOverlaps++;
+                    }
+                }
+            }
+        }
+        if (orgPendingOverlaps > 0) {
+            sb.append(String.format("  ⚠️  Org-Pending overlaps: %d%n", orgPendingOverlaps));
         }
         
         return sb.toString();
