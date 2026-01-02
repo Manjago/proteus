@@ -243,4 +243,5 @@ java -jar proteus.jar assemble myorg.asm -v
 
 См. каталог `examples/`:
 - `adam.asm` — базовый самовоспроизводящийся организм
-- `parasite.asm` — организм-паразит с SEARCH
+- `parasite.asm` — организм-паразит с SEARCH (точечные атаки)
+- `chaotic.asm` — организм-хаотик с STORE (случайные атаки)
