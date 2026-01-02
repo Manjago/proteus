@@ -1,55 +1,87 @@
 ; =============================================================================
-; Parasite v1 - Saboteur Organism
+; Parasite v2 - Saboteur Organism
 ; =============================================================================
 ;
-; Strategy: Find and overwrite enemy organisms!
-; Uses SEARCH to find patterns, then COPY garbage over them.
+; Strategy: Find Adam organisms and sabotage their replication!
+; 
+; How it works:
+;   1. First, replicate itself (like Adam)
+;   2. Use SEARCH to find Adam's signature (MOVI R4, 14)
+;   3. Overwrite found instruction with NOP → victim can't replicate correctly
 ;
-; THIS IS AN EXPERIMENTAL ORGANISM - may not work as intended!
-; The goal is to demonstrate SEARCH and memory-writing capabilities.
+; Key insight: The SEARCH template must be stored INSIDE this organism's genome.
+; We store the exact instruction we're looking for, then skip over it with JMP.
 ;
+; Size: 22 instructions
 ; =============================================================================
 
 start:
-    GETADDR R7          ; R7 = my address
-    MOVI R4, 20         ; R4 = my size (this organism)
-    
-; First, replicate myself (like Adam)
-    ALLOCATE R4, R3     ; R3 = child address
-    MOV R5, R7          ; R5 = src (me)
-    MOV R6, R3          ; R6 = dst (child)
+    GETADDR R7          ; R7 = my start address
+    MOVI R4, 22         ; R4 = my size (22 instructions)
+
+; === Allocate space for child ===
+    ALLOCATE R4, R3     ; R3 = child address (or -1 if failed)
+
+; === Initialize copy pointers ===
+    MOV R5, R7          ; R5 = source (me)
+    MOV R6, R3          ; R6 = destination (child)
     MOVI R0, 0          ; R0 = counter
 
+; === Copy loop ===
 copy_loop:
-    COPY R5, R6
+    COPY R5, R6         ; Copy with possible mutation
     INC R5
     INC R6
     INC R0
     JMPN R0, R4, copy_loop
+
+; === Spawn child ===
     SPAWN R3, R4
 
-; Now try to find and attack enemies
-; Search for "MOVI R4, 14" pattern (Adam's size instruction)
-; This is encoded as: 0x02 (MOVI) + R4 (100) + immediate 14
+; === Now attack! Skip over the data section ===
+    JMP attack
+
+; =============================================================================
+; DATA SECTION (not executed, used by SEARCH)
+; =============================================================================
+adam_signature:
+    MOVI R4, 14         ; This is what Adam looks like - our search template
+
+nop_weapon:
+    NOP                 ; What we'll overwrite with
+
+; =============================================================================
+; ATTACK CODE
+; =============================================================================
 attack:
-    MOVI R0, 0          ; R0 = search start (offset from my position)
-    MOVI R1, 1          ; R1 = template offset (instruction #1 = MOVI R4,14)
-    MOVI R2, 1          ; R2 = template length (1 instruction)
-    SEARCH R0, R1, R2, R3   ; R3 = found address (or -1)
-    
-; If found something, overwrite it with NOP
-; (This will break the victim's replication!)
-    MOVI R5, 0          ; R5 = NOP instruction
-    COPY R5, R3         ; Overwrite found location with NOP
-    
-; Repeat forever
+    ; Set up SEARCH parameters
+    ; Template is at offset 14 (adam_signature label)
+    ; We search starting from offset 0
+    MOVI R0, 0          ; Rs = start search from offset 0
+    MOVI R1, 14         ; Rt = template offset (adam_signature is at position 14)
+    MOVI R2, 1          ; Rl = template length (1 instruction)
+    SEARCH R0, R1, R2, R3   ; R3 = absolute address of found match, or -1
+
+    ; If R3 == -1, nothing found, restart
+    ; (Simple check: if R3 is negative, skip attack)
+    ; Note: We don't have a good "jump if negative" so we just try anyway
+
+    ; Attack: copy NOP over the found location
+    ; nop_weapon is at offset 15
+    GETADDR R7          ; Refresh R7 (might have changed after SPAWN?)
+    MOVI R1, 15         ; Offset of nop_weapon
+    ADD R5, R7, R1      ; R5 = absolute address of our NOP
+    COPY R5, R3         ; Copy our NOP to victim's location!
+
+    ; Reset and repeat
+    MOVI R0, 0
     JMP start
 
 ; =============================================================================
 ; Notes:
-; - This organism is 20 instructions (larger than Adam's 14)
-; - It replicates first, then tries to attack
-; - SEARCH looks for patterns relative to this organism's memory
-; - The attack may hit itself or its children - not very smart!
-; - A smarter parasite would verify the target is not itself
+; - This parasite is 22 instructions (larger than Adam's 14)
+; - The attack is simple: find and overwrite MOVI R4, 14
+; - If victim uses "salted" MOVI (.word 0x0280FFFE), we won't find them!
+; - SEARCH may find our own template - but that's in our own memory,
+;   overwriting it with NOP doesn't hurt us (we jump over it anyway)
 ; =============================================================================

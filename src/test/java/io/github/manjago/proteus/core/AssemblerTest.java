@@ -243,6 +243,60 @@ class AssemblerTest {
     }
     
     @Test
+    @DisplayName("Assemble .word with hex value")
+    void testWordHex() throws Exception {
+        int[] code = assembler.assemble(".word 0x0280000E");
+        assertEquals(1, code.length);
+        assertEquals(0x0280000E, code[0]);
+        // This is MOVI R4, 14
+        assertEquals(OpCode.MOVI, OpCode.decodeOpCode(code[0]));
+        assertEquals(4, OpCode.decodeR1(code[0]));
+        assertEquals(14, OpCode.decodeImmediate(code[0]));
+    }
+    
+    @Test
+    @DisplayName("Assemble .word with salted instruction")
+    void testWordSalted() throws Exception {
+        // MOVI R4, 14 with "salt" in reserved bits
+        int[] code = assembler.assemble(".word 0x0280FFFE");
+        assertEquals(1, code.length);
+        assertEquals(0x0280FFFE, code[0]);
+        // Still decodes as MOVI R4, but with different immediate
+        assertEquals(OpCode.MOVI, OpCode.decodeOpCode(code[0]));
+        assertEquals(4, OpCode.decodeR1(code[0]));
+    }
+    
+    @Test
+    @DisplayName("Assemble .word with decimal value")
+    void testWordDecimal() throws Exception {
+        int[] code = assembler.assemble(".word 42");
+        assertEquals(1, code.length);
+        assertEquals(42, code[0]);
+    }
+    
+    @Test
+    @DisplayName("Assemble .word case insensitive")
+    void testWordCaseInsensitive() throws Exception {
+        int[] code1 = assembler.assemble(".word 0xFF");
+        int[] code2 = assembler.assemble(".WORD 0xFF");
+        assertEquals(code1[0], code2[0]);
+    }
+    
+    @Test
+    @DisplayName("Assemble mixed instructions and .word")
+    void testMixedWithWord() throws Exception {
+        int[] code = assembler.assemble("""
+            GETADDR R7
+            .word 0x0280FFFE    ; Salted MOVI R4, 14
+            ALLOCATE R4, R3
+            """);
+        assertEquals(3, code.length);
+        assertEquals(OpCode.GETADDR, OpCode.decodeOpCode(code[0]));
+        assertEquals(0x0280FFFE, code[1]);
+        assertEquals(OpCode.ALLOCATE, OpCode.decodeOpCode(code[2]));
+    }
+    
+    @Test
     @DisplayName("Error: unknown instruction")
     void testUnknownInstruction() {
         assertThrows(Assembler.AssemblerException.class, () -> 

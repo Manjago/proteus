@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
  * ; Comment (from ; to end of line)
  * label:           ; Label definition
  * MNEMONIC [operands]
+ * .word 0xNNNNNNNN ; Raw 32-bit word
  * </pre>
  * 
  * <h2>Example:</h2>
@@ -29,7 +30,7 @@ import java.util.regex.Pattern;
  * ; My organism
  * start:
  *     GETADDR R7        ; Get my address
- *     MOVI R4, 14       ; Size = 14
+ *     .word 0x0280FFFE  ; MOVI R4, 14 with "salt" for parasite protection
  * loop:
  *     COPY R5, R6       ; Copy with mutation
  *     INC R5
@@ -59,6 +60,7 @@ import java.util.regex.Pattern;
  *   <li>ALLOCATE Rsize, Raddr</li>
  *   <li>SPAWN Raddr, Rsize</li>
  *   <li>SEARCH Rs, Rt, Rl, Rf</li>
+ *   <li>.word hex|decimal (raw 32-bit value)</li>
  * </ul>
  */
 public class Assembler {
@@ -70,6 +72,8 @@ public class Assembler {
     private static final Pattern LABEL_DEF_PATTERN = Pattern.compile("^\\s*(\\w+):\\s*$");
     private static final Pattern REGISTER_PATTERN = Pattern.compile("R(\\d)", Pattern.CASE_INSENSITIVE);
     private static final Pattern NUMBER_PATTERN = Pattern.compile("-?\\d+");
+    private static final Pattern HEX_PATTERN = Pattern.compile("0[xX][0-9A-Fa-f]+");
+    private static final Pattern WORD_DIRECTIVE_PATTERN = Pattern.compile("^\\.word\\s+(.+)$", Pattern.CASE_INSENSITIVE);
     
     /**
      * Assemble source code from string.
@@ -177,12 +181,27 @@ public class Assembler {
      * Assemble single instruction line.
      */
     private int assembleLine(ParsedLine pl, Map<String, Integer> labels) throws AssemblerException {
+        // Check for .word directive first
+        Matcher wordMatcher = WORD_DIRECTIVE_PATTERN.matcher(pl.content);
+        if (wordMatcher.matches()) {
+            return parseRawWord(wordMatcher.group(1).trim(), pl.lineNum);
+        }
+        
         String[] tokens = pl.content.split("[,\\s]+");
         if (tokens.length == 0 || tokens[0].isEmpty()) {
             throw new AssemblerException("Empty instruction", pl.lineNum);
         }
         
         String mnemonic = tokens[0].toUpperCase();
+        
+        // Check for .word without pattern match (e.g. ".WORD" case)
+        if (mnemonic.equals(".WORD")) {
+            if (tokens.length < 2) {
+                throw new AssemblerException("Not enough operands. Usage: .word 0xNNNNNNNN", pl.lineNum);
+            }
+            return parseRawWord(tokens[1], pl.lineNum);
+        }
+        
         OpCode op = findOpCode(mnemonic);
         
         if (op == null) {
@@ -386,6 +405,36 @@ public class Assembler {
         }
         
         return offset;
+    }
+    
+    /**
+     * Parse raw word (hex or decimal) for .word directive.
+     */
+    private int parseRawWord(String token, int lineNum) throws AssemblerException {
+        String trimmed = token.trim();
+        
+        try {
+            // Try hex first (0x...)
+            if (HEX_PATTERN.matcher(trimmed).matches()) {
+                // Parse as unsigned, handle overflow to int
+                long value = Long.parseLong(trimmed.substring(2), 16);
+                if (value > 0xFFFFFFFFL || value < 0) {
+                    throw new AssemblerException("Hex value out of 32-bit range: " + trimmed, lineNum);
+                }
+                return (int) value;
+            }
+            
+            // Try decimal
+            long value = Long.parseLong(trimmed);
+            if (value > 0xFFFFFFFFL || value < Integer.MIN_VALUE) {
+                throw new AssemblerException("Value out of 32-bit range: " + trimmed, lineNum);
+            }
+            return (int) value;
+            
+        } catch (NumberFormatException e) {
+            throw new AssemblerException("Invalid .word value: " + trimmed + 
+                    " (expected hex 0xNNNNNNNN or decimal)", lineNum);
+        }
     }
     
     // ========== Helper classes ==========

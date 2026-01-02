@@ -706,15 +706,25 @@ java -jar proteus.jar info
 - [x] **Assembler** — парсинг текстового ассемблера в машинный код
   - Поддержка всех 17 инструкций ISA v1.2
   - Комментарии (`;` до конца строки)
-  - Метки для переходов
+  - Метки для переходов (forward reference работает)
+  - Директива `.word` для raw hex значений (защита от паразитов!)
   - Команда CLI: `assemble <file.asm> -o <file.bin>`
+  - Документация: [docs/ASM_SPEC.md](docs/ASM_SPEC.md)
 
 ```asm
-; Пример: организм-убийца
-GETADDR R7          ; получить свой адрес
-MOVI R4, 14         ; размер генома
-SEARCH R0, R1, R2, R3  ; найти жертву
-COPY R5, R6         ; атаковать!
+; Пример: защищённый организм
+start:
+    GETADDR R7
+    .word 0x0280FFFE    ; MOVI R4, 14 с "солью" - паразит не найдёт!
+    ALLOCATE R4, R3
+    JMP attack
+
+template:
+    MOVI R4, 14         ; Шаблон для SEARCH (не выполняется)
+
+attack:
+    SEARCH R0, R1, R2, R3  ; Найти жертву
+    COPY R5, R3            ; Атаковать!
 ```
 
 #### 5.2. Manual Deploy (inject organisms)
