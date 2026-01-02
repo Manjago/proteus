@@ -181,6 +181,12 @@ public class RunCommand implements Callable<Integer> {
             
             return 0;
             
+        } catch (java.io.IOException e) {
+            System.out.println();
+            System.out.println("❌ Checkpoint error: " + e.getMessage());
+            e.printStackTrace();
+            return 1;
+            
         } catch (OutOfMemoryError e) {
             // Try to report what we can
             System.out.println();
