@@ -698,7 +698,6 @@ public class Simulator {
     
     // ========== Getters ==========
     
-    public SimulatorConfig getConfig() { return config; }
     public long getTotalCycles() { return totalCycles; }
     public int getTotalSpawns() { return totalSpawns; }
     public int getDeathsByErrors() { return deathsByErrors; }

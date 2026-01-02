@@ -418,7 +418,11 @@ public class CheckpointStore {
     }
     
     private static Organism restoreOrganism(OrganismData od, Simulator sim) {
-        CpuState state = new CpuState(od.startAddr);
+        // Create organism (this creates a new CpuState internally)
+        Organism org = new Organism(od.id, od.startAddr, od.size, od.parentId, od.birthCycle, od.allocId);
+        
+        // Now restore the CpuState fields
+        CpuState state = org.getState();
         state.setIp(od.ip);
         
         for (int i = 0; i < 8; i++) {
@@ -430,16 +434,15 @@ public class CheckpointStore {
             state.incrementErrors();
         }
         
-        // Restore age
-        // Note: CpuState doesn't have setAge, so we use reflection or add method
-        // For now, age will be reset - TODO: add setAge to CpuState
+        // Restore age - need setAge method in CpuState
+        state.setAge(od.age);
         
         // Restore pending allocation
         if (od.hasPending) {
             state.setPendingAllocation(od.pendingAddr, od.pendingSize, od.pendingAllocId);
         }
         
-        return new Organism(od.id, od.startAddr, od.size, state, od.parentId, od.birthCycle, od.allocId);
+        return org;
     }
     
     private static int[] toIntArray(List<Integer> list) {

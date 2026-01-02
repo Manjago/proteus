@@ -165,6 +165,13 @@ public final class CpuState {
         this.age++;
     }
     
+    /**
+     * Set age (for checkpoint restore).
+     */
+    public void setAge(long age) {
+        this.age = age;
+    }
+    
     // ========== Utility ==========
     
     /**

@@ -122,4 +122,17 @@ public interface MemoryManager {
     default int getLastAllocId() {
         return -1;
     }
+    
+    /**
+     * Mark memory range as used (for checkpoint restore).
+     * Unlike allocate(), this marks a SPECIFIC address range.
+     * 
+     * @param addr start address
+     * @param size block size
+     * @return the allocId assigned to this range, or -1 if failed
+     */
+    default int markUsed(int addr, int size) {
+        // Default: not supported, subclasses should override
+        return -1;
+    }
 }
