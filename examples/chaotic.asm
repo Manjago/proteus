@@ -36,7 +36,7 @@ copy_loop:
     INC R5
     INC R6
     INC R0
-    JMPN R0, R4, copy_loop
+    JLT R0, R4, copy_loop
 
     ; Spawn child
     SPAWN R3, R4
@@ -46,7 +46,7 @@ copy_loop:
     
     ; Check: have we replicated 5 times?
     MOVI R0, 5
-    JMPN R1, R0, replicate   ; if R1 < 5, keep replicating
+    JLT R1, R0, replicate   ; if R1 < 5, keep replicating
 
 ; === Attack phase ===
 attack:

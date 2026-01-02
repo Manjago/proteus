@@ -24,7 +24,7 @@
 
 | Режим | Формула | Используется в |
 |-------|---------|----------------|
-| **IP-relative** | `IP = IP + offset` | JMP, JMPZ, JMPN |
+| **IP-relative** | `IP = IP + offset` | JMP, JMPZ, JLT |
 | **startAddr-relative** | `addr = startAddr + R` | LOAD, STORE |
 | **Absolute** | `addr = R` | COPY, ALLOCATE, SPAWN |
 
@@ -42,7 +42,7 @@
 | :---: | :---: | :---: |
 | **OpCode** | **R_dst** | **Immediate (unsigned)** |
 
-### Формат JMP/JMPZ/JMPN (relative offset) — v1.2
+### Формат JMP/JMPZ/JLT (relative offset) — v1.2
 
 | Биты 31-24 (8) | 23-21 (3) | 20-18 (3) | 17-0 (18) |
 | :---: | :---: | :---: | :---: |
@@ -105,7 +105,7 @@ attack:
 | :--- | :--- | :--- | :--- |
 | `0x30` | `JMP` | `offset` | `IP = IP + offset` ⚠️ **v1.2: relative** |
 | `0x31` | `JMPZ` | `R_cond, offset` | `if (R_cond == 0) IP = IP + offset` ⚠️ **v1.2: relative** |
-| `0x32` | `JMPN` | `R_a, R_b, offset` | `if (R_a < R_b) IP = IP + offset` ⚠️ **v1.2: relative** |
+| `0x32` | `JLT` | `R_a, R_b, offset` | `if (R_a < R_b) IP = IP + offset` ⚠️ **v1.2: relative** |
 
 **Смещение `offset`** — знаковое 18-битное число. Примеры:
 - `JMP -5` — прыгнуть на 5 инструкций назад
@@ -249,7 +249,7 @@ MOVI R4, 14:
 5: ADD R6, R3, R0   ; R6 = childStart + offset (абс. адрес назначения)
 6: COPY [R5], [R6]  ; soup[R6] = soup[R5] (с возможной мутацией!)
 7: INC R0           ; offset++
-8: JMPN R0, R4, -5  ; if (R0 < R4) goto IP-5 (т.е. инструкция 4)
+8: JLT R0, R4, -5  ; if (R0 < R4) goto IP-5 (т.е. инструкция 4)
 
 ; --- Размножение ---
 9: SPAWN R3, R4     ; Создать child'а
@@ -270,9 +270,9 @@ IP=4: ADD R5, R7, R0  → R5=0+0=0
 IP=5: ADD R6, R3, R0  → R6=13+0=13
 IP=6: COPY [R5], [R6] → soup[13]=soup[0] (копируем инструкцию 0)
 IP=7: INC R0          → R0=1
-IP=8: JMPN R0, R4, -5 → 1<12? да → IP=8+(-5)+1=4
+IP=8: JLT R0, R4, -5 → 1<12? да → IP=8+(-5)+1=4
 ... (цикл продолжается до R0=12)
-IP=8: JMPN R0, R4, -5 → 12<12? нет → IP=9
+IP=8: JLT R0, R4, -5 → 12<12? нет → IP=9
 IP=9: SPAWN R3, R4    → создан child [13..24]
 IP=10: MOVI R0, 0     → R0=0
 IP=11: JMP -9         → IP=11+(-9)+1=3
@@ -288,7 +288,7 @@ IP=3: ALLOCATE...     → новый цикл размножения
 ```asm
 ; Adam v2 содержал:
 JMP 0     ; Абсолютный адрес!
-JMPN R2, 5  ; Абсолютный адрес!
+JLT R2, 5  ; Абсолютный адрес!
 ```
 
 Если Adam скопирован на адрес 100, его `JMP 0` ведёт на адрес 0, а не на начало его кода!
@@ -357,7 +357,7 @@ void defragment(Organism org, int newAddr) {
 | 5 | `ADD R6, R3, R0` | `0x10C60000` |
 | 6 | `COPY [R5], [R6]` | `0x40AC0000` |
 | 7 | `INC R0` | `0x12000000` |
-| 8 | `JMPN R0, R4, -5` | `0x32083FFB` |
+| 8 | `JLT R0, R4, -5` | `0x32083FFB` |
 | 9 | `SPAWN R3, R4` | `0x42680000` |
 | 10 | `MOVI R0, 0` | `0x02000000` |
 | 11 | `JMP -9` | `0x30003FF7` |

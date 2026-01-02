@@ -33,7 +33,7 @@ copy_loop:
     INC R5
     INC R6
     INC R0
-    JMPN R0, R4, copy_loop
+    JLT R0, R4, copy_loop
 
 ; === Spawn child ===
     SPAWN R3, R4

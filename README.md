@@ -160,7 +160,7 @@ java -jar proteus-*.jar assemble myorg.asm -d
 
 | Файл | Описание |
 |------|----------|
-| [examples/adam.asm](examples/adam.asm) | Базовый репликатор — "Адам" |
+| [examples/ancestor.asm](examples/ancestor.asm) | Ancestor — первый самореплицирующийся организм |
 | [examples/parasite.asm](examples/parasite.asm) | Паразит — ищет и атакует через SEARCH+COPY |
 | [examples/chaotic.asm](examples/chaotic.asm) | Хаотик — стреляет вслепую через STORE |
 
