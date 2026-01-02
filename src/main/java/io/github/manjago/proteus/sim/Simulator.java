@@ -110,6 +110,47 @@ public class Simulator {
     }
     
     /**
+     * Get simulator configuration.
+     */
+    public SimulatorConfig getConfig() {
+        return config;
+    }
+    
+    /**
+     * Get next organism ID (for checkpoint).
+     */
+    public int getNextOrganismId() {
+        return totalOrganismsCreated;
+    }
+    
+    /**
+     * Add organism restored from checkpoint.
+     * Does NOT allocate memory (should be pre-marked).
+     */
+    public void addRestoredOrganism(Organism org) {
+        aliveOrganisms.add(org);
+        reaper.register(org);
+        aliveCount++;
+        if (aliveCount > maxAlive) {
+            maxAlive = aliveCount;
+        }
+        log.debug("Restored organism #{} at [{}..{})", 
+            org.getId(), org.getStartAddr(), org.getStartAddr() + org.getSize());
+    }
+    
+    /**
+     * Restore simulator state counters from checkpoint.
+     */
+    public void restoreState(long cycles, int spawns, int deathsErrors, int nextOrgId) {
+        this.totalCycles = cycles;
+        this.totalSpawns = spawns;
+        this.deathsByErrors = deathsErrors;
+        this.totalOrganismsCreated = nextOrgId;
+        log.info("Restored state: cycles={}, spawns={}, deaths={}, nextOrgId={}", 
+            cycles, spawns, deathsErrors, nextOrgId);
+    }
+    
+    /**
      * Set event listener for simulation events.
      */
     public void setListener(SimulatorListener listener) {

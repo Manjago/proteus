@@ -3,14 +3,13 @@ package io.github.manjago.proteus.cli;
 import io.github.manjago.proteus.config.SimulatorConfig;
 import io.github.manjago.proteus.core.Assembler;
 import io.github.manjago.proteus.debug.*;
+import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.sim.Simulator;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
 
 import java.io.FileOutputStream;
 import java.io.PrintStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -22,10 +21,12 @@ import java.util.stream.Collectors;
  * Run simulation in debug mode with frame recording.
  * 
  * Usage:
- *   proteus debug --cycles 40                    # Record 40 cycles with Adam
- *   proteus debug --cycles 40 --inject org.asm  # Inject custom organism
- *   proteus debug --cycles 2000 --from 1950     # Show only cycles 1950+
- *   proteus debug --cycles 100 --output out.txt # Output to file
+ *   proteus debug --cycles 40                       # Record 40 cycles with Adam
+ *   proteus debug --cycles 40 --inject org.asm     # Inject custom organism
+ *   proteus debug --cycles 2000 --from 1950        # Show only cycles 1950+
+ *   proteus debug --cycles 100 --output out.txt    # Output to file
+ *   proteus debug --cycles 100 --save state.mv     # Save checkpoint
+ *   proteus debug --cycles 100 --resume state.mv   # Resume from checkpoint
  */
 @Command(
     name = "debug",
@@ -37,7 +38,7 @@ public class DebugCommand implements Callable<Integer> {
     @Option(names = {"-c", "--cycles"}, description = "Number of cycles to run", defaultValue = "40")
     private int cycles;
     
-    @Option(names = {"-s", "--soup-size"}, description = "Soup size", defaultValue = "1000")
+    @Option(names = {"-s", "--soup-size"}, description = "Soup size (ignored if --resume)", defaultValue = "1000")
     private int soupSize;
     
     @Option(names = {"-i", "--inject"}, description = "Inject organism from .asm file")
@@ -49,10 +50,10 @@ public class DebugCommand implements Callable<Integer> {
     @Option(names = {"--no-adam"}, description = "Don't seed Adam (use with --inject)")
     private boolean noAdam;
     
-    @Option(names = {"--resume"}, description = "Resume from checkpoint file")
+    @Option(names = {"--resume"}, description = "Resume from checkpoint file (.mv)")
     private Path resumeCheckpoint;
     
-    @Option(names = {"--save"}, description = "Save checkpoint after recording")
+    @Option(names = {"--save"}, description = "Save checkpoint after run (.mv)")
     private Path saveCheckpoint;
     
     @Option(names = {"--from"}, description = "Show cycles starting from this number")
@@ -67,7 +68,7 @@ public class DebugCommand implements Callable<Integer> {
     @Option(names = {"--summary"}, description = "Show only summary table")
     private boolean summaryOnly;
     
-    @Option(names = {"--seed"}, description = "Random seed for reproducibility")
+    @Option(names = {"--seed"}, description = "Random seed (ignored if --resume)")
     private Long seed;
     
     @Override
@@ -82,50 +83,74 @@ public class DebugCommand implements Callable<Integer> {
             
             printHeader(out);
             
-            // Determine effective seed
-            long effectiveSeed = seed != null ? seed : System.currentTimeMillis();
+            Simulator sim;
+            long startCycle;
             
-            // Create config
-            SimulatorConfig config = SimulatorConfig.builder()
-                    .soupSize(soupSize)
-                    .maxCycles(cycles)
-                    .maxOrganisms(100)
-                    .randomSeed(effectiveSeed)
-                    .reportInterval(Integer.MAX_VALUE)  // Disable progress reports
-                    .build();
-            
-            Simulator sim = new Simulator(config);
-            
-            // Print configuration
-            out.println("Configuration:");
-            out.printf("  Soup size:  %,d cells%n", soupSize);
-            out.printf("  Cycles:     %,d%n", cycles);
-            out.printf("  Seed:       %d%n", effectiveSeed);
-            if (fromCycle != null || toCycle != null) {
-                out.printf("  Show range: %s to %s%n", 
-                    fromCycle != null ? fromCycle.toString() : "0",
-                    toCycle != null ? toCycle.toString() : "end");
+            if (resumeCheckpoint != null) {
+                // Resume from checkpoint
+                out.println("📂 Resuming from checkpoint: " + resumeCheckpoint);
+                out.println("   " + CheckpointStore.getInfo(resumeCheckpoint));
+                out.println();
+                
+                // Note: seed is ignored when resuming!
+                if (seed != null) {
+                    out.println("⚠️  Note: --seed is ignored when resuming (using checkpoint RNG state)");
+                    out.println();
+                }
+                
+                sim = CheckpointStore.restore(resumeCheckpoint, null);
+                startCycle = sim.getTotalCycles();
+                
+                out.println("Configuration (from checkpoint):");
+                out.printf("  Soup size:    %,d cells%n", sim.getConfig().soupSize());
+                out.printf("  Start cycle:  %,d%n", startCycle);
+                out.printf("  Organisms:    %d%n", sim.getAliveOrganisms().size());
+                out.printf("  Seed:         %d%n", sim.getActualSeed());
+                out.printf("  Run cycles:   %,d (to cycle %,d)%n", cycles, startCycle + cycles);
+                out.println();
+                
+            } else {
+                // Fresh start
+                long effectiveSeed = seed != null ? seed : System.currentTimeMillis();
+                
+                SimulatorConfig config = SimulatorConfig.builder()
+                        .soupSize(soupSize)
+                        .maxCycles(cycles)
+                        .maxOrganisms(100)
+                        .randomSeed(effectiveSeed)
+                        .reportInterval(Integer.MAX_VALUE)
+                        .build();
+                
+                sim = new Simulator(config);
+                startCycle = 0;
+                
+                out.println("Configuration:");
+                out.printf("  Soup size:  %,d cells%n", soupSize);
+                out.printf("  Cycles:     %,d%n", cycles);
+                out.printf("  Seed:       %d%n", effectiveSeed);
+                
+                if (fromCycle != null || toCycle != null) {
+                    out.printf("  Show range: %s to %s%n", 
+                        fromCycle != null ? fromCycle.toString() : "0",
+                        toCycle != null ? toCycle.toString() : "end");
+                }
+                out.println();
+                
+                // Seed Adam unless disabled
+                if (!noAdam) {
+                    sim.seedAdam();
+                    out.println("🌱 Seeded Adam#0");
+                }
             }
-            out.println();
             
             // Setup frame recorder
             FrameRecorder recorder = new FrameRecorder(cycles);
             sim.setFrameRecorder(recorder);
             
-            // Handle resume
-            if (resumeCheckpoint != null) {
-                out.println("⚠️  Resume from checkpoint not yet fully implemented");
-                out.println("    Checkpoint file: " + resumeCheckpoint);
-                out.println();
-                // TODO: Load checkpoint and restore state
-                // For now, just continue with normal startup
-            }
-            
-            // Seed Adam unless disabled
-            if (!noAdam) {
-                sim.seedAdam();
-                recorder.setOrganismName(0, "Adam");
-                out.println("🌱 Seeded Adam#0");
+            // Name existing organisms
+            for (var org : sim.getAliveOrganisms()) {
+                String name = org.getParentId() < 0 ? "Adam" : null;
+                recorder.setOrganismName(org.getId(), name);
             }
             
             // Inject custom organism if specified
@@ -176,6 +201,7 @@ public class DebugCommand implements Callable<Integer> {
                 CheckpointStore.save(sim, saveCheckpoint);
                 out.println();
                 out.println("💾 Checkpoint saved: " + saveCheckpoint);
+                out.println("   " + CheckpointStore.getInfo(saveCheckpoint));
             }
             
             return 0;

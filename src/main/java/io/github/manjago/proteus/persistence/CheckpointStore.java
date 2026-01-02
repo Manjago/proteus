@@ -1,8 +1,7 @@
-package io.github.manjago.proteus.debug;
+package io.github.manjago.proteus.persistence;
 
-import io.github.manjago.proteus.core.CpuState;
-import io.github.manjago.proteus.core.GameRng;
-import io.github.manjago.proteus.core.Organism;
+import io.github.manjago.proteus.config.SimulatorConfig;
+import io.github.manjago.proteus.core.*;
 import io.github.manjago.proteus.sim.Simulator;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
@@ -24,10 +23,11 @@ import java.util.List;
  * - Easy key-value storage
  * 
  * Structure:
- * - "meta" map: metadata (version, cycles, seed, etc.)
+ * - "meta" map: metadata (version, cycles, seed, soup_size, etc.)
  * - "rng" map: RNG state bytes
  * - "soup" map: soup data (region-based for compression)
  * - "organisms" map: organism data
+ * - "config" map: simulator configuration
  */
 public class CheckpointStore {
     
@@ -44,6 +44,13 @@ public class CheckpointStore {
     private static final String KEY_TOTAL_SPAWNS = "total_spawns";
     private static final String KEY_DEATHS_BY_REAPER = "deaths_reaper";
     private static final String KEY_DEATHS_BY_ERRORS = "deaths_errors";
+    private static final String KEY_NEXT_ORG_ID = "next_org_id";
+    private static final String KEY_NEXT_ALLOC_ID = "next_alloc_id";
+    
+    // Config keys
+    private static final String KEY_MUTATION_RATE = "mutation_rate";
+    private static final String KEY_MAX_ERRORS = "max_errors";
+    private static final String KEY_MAX_ORGANISMS = "max_organisms";
     
     /**
      * Save checkpoint to MVStore file.
@@ -69,6 +76,19 @@ public class CheckpointStore {
             meta.put(KEY_TOTAL_SPAWNS, (long) sim.getTotalSpawns());
             meta.put(KEY_DEATHS_BY_REAPER, (long) sim.getReaper().getReapCount());
             meta.put(KEY_DEATHS_BY_ERRORS, (long) sim.getDeathsByErrors());
+            meta.put(KEY_NEXT_ORG_ID, (long) sim.getNextOrganismId());
+            
+            // Save next allocation ID for deterministic restore
+            if (sim.getMemoryManager() instanceof BitmapMemoryManager bmm) {
+                meta.put(KEY_NEXT_ALLOC_ID, (long) bmm.getNextAllocationId());
+            }
+            
+            // Config map (for restore)
+            MVMap<String, String> config = store.openMap("config");
+            SimulatorConfig cfg = sim.getConfig();
+            config.put(KEY_MUTATION_RATE, String.valueOf(cfg.mutationRate()));
+            config.put(KEY_MAX_ERRORS, String.valueOf(cfg.maxErrors()));
+            config.put(KEY_MAX_ORGANISMS, String.valueOf(cfg.maxOrganisms()));
             
             // RNG state
             MVMap<String, byte[]> rng = store.openMap("rng");
@@ -76,10 +96,12 @@ public class CheckpointStore {
             
             // Soup - store non-zero regions
             MVMap<Integer, int[]> soup = store.openMap("soup");
+            soup.clear();  // Clear old data
             saveSoupRegions(sim, soup);
             
             // Organisms
             MVMap<Integer, byte[]> organisms = store.openMap("organisms");
+            organisms.clear();  // Clear old data
             saveOrganisms(sim, organisms);
             
             store.commit();
@@ -90,7 +112,7 @@ public class CheckpointStore {
     }
     
     /**
-     * Load checkpoint from MVStore file.
+     * Load checkpoint data from MVStore file.
      */
     public static CheckpointData load(Path path) throws IOException {
         log.info("Loading checkpoint from {} (MVStore)", path);
@@ -110,6 +132,14 @@ public class CheckpointStore {
             int totalSpawns = meta.getOrDefault(KEY_TOTAL_SPAWNS, 0L).intValue();
             int deathsByReaper = meta.getOrDefault(KEY_DEATHS_BY_REAPER, 0L).intValue();
             int deathsByErrors = meta.getOrDefault(KEY_DEATHS_BY_ERRORS, 0L).intValue();
+            int nextOrgId = meta.getOrDefault(KEY_NEXT_ORG_ID, 0L).intValue();
+            int nextAllocId = meta.getOrDefault(KEY_NEXT_ALLOC_ID, 0L).intValue();
+            
+            // Config
+            MVMap<String, String> configMap = store.openMap("config");
+            double mutationRate = Double.parseDouble(configMap.getOrDefault(KEY_MUTATION_RATE, "0.002"));
+            int maxErrors = Integer.parseInt(configMap.getOrDefault(KEY_MAX_ERRORS, "100"));
+            int maxOrganisms = Integer.parseInt(configMap.getOrDefault(KEY_MAX_ORGANISMS, "1000"));
             
             // RNG state
             MVMap<String, byte[]> rngMap = store.openMap("rng");
@@ -131,9 +161,93 @@ public class CheckpointStore {
             
             return new CheckpointData(
                 version, totalCycles, seed, rngState, soupSize, soupData, organisms,
-                totalSpawns, deathsByReaper, deathsByErrors
+                totalSpawns, deathsByReaper, deathsByErrors, nextOrgId, nextAllocId,
+                mutationRate, maxErrors, maxOrganisms
             );
         }
+    }
+    
+    /**
+     * Restore Simulator from checkpoint.
+     * 
+     * @param path checkpoint file
+     * @param configOverride optional config override (null = use checkpoint config)
+     * @return restored Simulator ready to run
+     */
+    public static Simulator restore(Path path, SimulatorConfig configOverride) throws IOException {
+        CheckpointData data = load(path);
+        
+        // Build config
+        SimulatorConfig config;
+        if (configOverride != null) {
+            // Use override but keep soup size from checkpoint
+            config = SimulatorConfig.builder()
+                    .soupSize(data.soupSize())
+                    .mutationRate(configOverride.mutationRate())
+                    .maxErrors(configOverride.maxErrors())
+                    .maxOrganisms(configOverride.maxOrganisms())
+                    .maxCycles(configOverride.maxCycles())
+                    .reportInterval(configOverride.reportInterval())
+                    .randomSeed(data.seed())  // Always use checkpoint seed
+                    .build();
+        } else {
+            config = SimulatorConfig.builder()
+                    .soupSize(data.soupSize())
+                    .mutationRate(data.mutationRate())
+                    .maxErrors(data.maxErrors())
+                    .maxOrganisms(data.maxOrganisms())
+                    .randomSeed(data.seed())
+                    .build();
+        }
+        
+        // Restore RNG
+        GameRng rng;
+        if (data.hasDeterministicRng()) {
+            rng = GameRng.restore(data.rngState());
+            log.info("Restored RNG state from checkpoint (deterministic resume)");
+        } else {
+            // Old checkpoint without RNG state - create new RNG from seed
+            rng = new GameRng(data.seed());
+            log.warn("Checkpoint has no RNG state - resume will NOT be deterministic!");
+        }
+        
+        // Create simulator with restored RNG
+        Simulator sim = new Simulator(config, rng);
+        
+        // Restore soup
+        var soup = sim.getSoup();
+        for (int i = 0; i < data.soup().length && i < soup.length(); i++) {
+            soup.set(i, data.soup()[i]);
+        }
+        
+        // Restore memory manager state with exact allocIds
+        if (sim.getMemoryManager() instanceof BitmapMemoryManager bmm) {
+            // Mark used regions with original allocIds
+            for (OrganismData od : data.organisms()) {
+                bmm.markUsedWithAllocId(od.startAddr, od.size, od.allocId);
+            }
+            // Restore next allocation ID counter
+            bmm.setNextAllocationId(data.nextAllocId());
+        } else {
+            // Fallback for other memory managers
+            for (OrganismData od : data.organisms()) {
+                sim.getMemoryManager().markUsed(od.startAddr, od.size);
+            }
+        }
+        
+        // Restore organisms
+        for (OrganismData od : data.organisms()) {
+            Organism org = restoreOrganism(od, sim);
+            sim.addRestoredOrganism(org);
+        }
+        
+        // Restore counters
+        sim.restoreState(data.totalCycles(), data.totalSpawns(), data.deathsByErrors(), data.nextOrgId());
+        
+        log.info("Simulator restored: {} cycles, {} organisms", 
+            data.totalCycles(), data.organisms().size());
+        
+        return sim;
     }
     
     /**
@@ -149,13 +263,38 @@ public class CheckpointStore {
         }
     }
     
+    /**
+     * Get checkpoint info without full load.
+     */
+    public static String getInfo(Path path) {
+        try (MVStore store = MVStore.open(path.toString())) {
+            MVMap<String, Long> meta = store.openMap("meta");
+            
+            int version = meta.getOrDefault(KEY_VERSION, 0L).intValue();
+            long cycles = meta.getOrDefault(KEY_CYCLES, 0L);
+            long seed = meta.getOrDefault(KEY_SEED, 0L);
+            int soupSize = meta.getOrDefault(KEY_SOUP_SIZE, 0L).intValue();
+            int orgCount = meta.getOrDefault(KEY_ORG_COUNT, 0L).intValue();
+            
+            MVMap<String, byte[]> rngMap = store.openMap("rng");
+            boolean hasRng = rngMap.get("state") != null;
+            
+            return String.format(
+                "Checkpoint v%d: %,d cycles, %d organisms, soup=%,d, seed=%d%s",
+                version, cycles, orgCount, soupSize, seed,
+                hasRng ? " (deterministic)" : " (non-deterministic)"
+            );
+        } catch (Exception e) {
+            return "Invalid checkpoint: " + e.getMessage();
+        }
+    }
+    
     // ========== Private helpers ==========
     
     private static void saveSoupRegions(Simulator sim, MVMap<Integer, int[]> soupMap) {
         int soupSize = sim.getMemoryManager().getTotalMemory();
         var soup = sim.getSoup();
         
-        // Find non-zero regions and store them
         int regionStart = -1;
         List<Integer> regionData = new ArrayList<>();
         
@@ -167,14 +306,12 @@ public class CheckpointStore {
                 }
                 regionData.add(value);
             } else if (regionStart != -1) {
-                // Store region
                 soupMap.put(regionStart, toIntArray(regionData));
                 regionStart = -1;
                 regionData.clear();
             }
         }
         
-        // Don't forget last region
         if (regionStart != -1) {
             soupMap.put(regionStart, toIntArray(regionData));
         }
@@ -185,7 +322,7 @@ public class CheckpointStore {
         
         for (Integer startAddr : soupMap.keySet()) {
             int[] region = soupMap.get(startAddr);
-            if (region != null) {
+            if (region != null && startAddr + region.length <= soupSize) {
                 System.arraycopy(region, 0, soup, startAddr, region.length);
             }
         }
@@ -280,6 +417,31 @@ public class CheckpointStore {
         }
     }
     
+    private static Organism restoreOrganism(OrganismData od, Simulator sim) {
+        CpuState state = new CpuState(od.startAddr);
+        state.setIp(od.ip);
+        
+        for (int i = 0; i < 8; i++) {
+            state.setRegister(i, od.registers[i]);
+        }
+        
+        // Restore error count
+        for (int i = 0; i < od.errors; i++) {
+            state.incrementErrors();
+        }
+        
+        // Restore age
+        // Note: CpuState doesn't have setAge, so we use reflection or add method
+        // For now, age will be reset - TODO: add setAge to CpuState
+        
+        // Restore pending allocation
+        if (od.hasPending) {
+            state.setPendingAllocation(od.pendingAddr, od.pendingSize, od.pendingAllocId);
+        }
+        
+        return new Organism(od.id, od.startAddr, od.size, state, od.parentId, od.birthCycle, od.allocId);
+    }
+    
     private static int[] toIntArray(List<Integer> list) {
         int[] arr = new int[list.size()];
         for (int i = 0; i < list.size(); i++) {
@@ -303,7 +465,12 @@ public class CheckpointStore {
         List<OrganismData> organisms,
         int totalSpawns,
         int deathsByReaper,
-        int deathsByErrors
+        int deathsByErrors,
+        int nextOrgId,
+        int nextAllocId,
+        double mutationRate,
+        int maxErrors,
+        int maxOrganisms
     ) {
         public boolean hasDeterministicRng() {
             return rngState != null;

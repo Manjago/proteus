@@ -356,6 +356,47 @@ public class BitmapMemoryManager implements MemoryManager {
     }
     
     /**
+     * Mark memory range as used with SPECIFIC allocId (for checkpoint restore).
+     * Does NOT increment nextAllocationId.
+     * 
+     * @param addr start address
+     * @param size block size
+     * @param allocId specific allocation ID to use
+     */
+    public void markUsedWithAllocId(int addr, int size, int allocId) {
+        if (addr < 0 || size <= 0 || allocId < 0) return;
+        
+        int end = Math.min(addr + size, totalSize);
+        for (int i = addr; i < end; i++) {
+            ownership[i] = allocId;
+        }
+        
+        // Update next-fit position to after this marked region
+        nextFitPosition = end;
+        if (nextFitPosition >= totalSize) {
+            nextFitPosition = 0;
+        }
+        
+        log.trace("Marked [{}, {}) as used with allocId={} (restore)", addr, end, allocId);
+    }
+    
+    /**
+     * Set next allocation ID (for checkpoint restore).
+     * Should be called after restoring all organisms.
+     */
+    public void setNextAllocationId(int nextId) {
+        this.nextAllocationId = nextId;
+        log.debug("Set nextAllocationId to {} (restore)", nextId);
+    }
+    
+    /**
+     * Get next allocation ID (for checkpoint save).
+     */
+    public int getNextAllocationId() {
+        return nextAllocationId;
+    }
+    
+    /**
      * Check if entire range belongs to a SINGLE owner (same allocId).
      * Used to verify spawn didn't write over someone else's memory.
      * 

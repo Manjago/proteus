@@ -2,6 +2,7 @@ package io.github.manjago.proteus.cli;
 
 import io.github.manjago.proteus.config.SimulatorConfig;
 import io.github.manjago.proteus.core.Organism;
+import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.sim.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -46,6 +47,12 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = {"-o", "--output"}, description = "Output file for state")
     private Path outputFile;
     
+    @Option(names = {"--resume"}, description = "Resume from checkpoint file (.mv)")
+    private Path resumeCheckpoint;
+    
+    @Option(names = {"--save"}, description = "Save checkpoint after run (.mv)")
+    private Path saveCheckpoint;
+    
     @Option(names = {"--report-interval"}, description = "Progress report interval (cycles)")
     private Integer reportInterval;
     
@@ -59,24 +66,79 @@ public class RunCommand implements Callable<Integer> {
         long startTime = System.currentTimeMillis();
         
         try {
-            // Build configuration
-            SimulatorConfig config = buildConfig();
-            
-            if (!quiet) {
-                printBanner();
-                printConfig(config);
+            if (resumeCheckpoint != null) {
+                // Resume from checkpoint
+                if (!quiet) {
+                    printBanner();
+                    System.out.println("📂 Resuming from checkpoint: " + resumeCheckpoint);
+                    System.out.println("   " + CheckpointStore.getInfo(resumeCheckpoint));
+                    System.out.println();
+                    
+                    if (randomSeed != null) {
+                        System.out.println("⚠️  Note: --seed is ignored when resuming");
+                    }
+                }
+                
+                // Build config override if needed
+                SimulatorConfig configOverride = null;
+                if (maxCycles != null || reportInterval != null) {
+                    configOverride = SimulatorConfig.builder()
+                            .maxCycles(maxCycles != null ? maxCycles : 0)
+                            .reportInterval(reportInterval != null ? reportInterval : 1000)
+                            .build();
+                }
+                
+                simulator = CheckpointStore.restore(resumeCheckpoint, configOverride);
+                
+                if (!quiet) {
+                    System.out.println("Configuration (from checkpoint):");
+                    System.out.printf("  Soup size:    %,d cells%n", simulator.getConfig().soupSize());
+                    System.out.printf("  Start cycle:  %,d%n", simulator.getTotalCycles());
+                    System.out.printf("  Organisms:    %d%n", simulator.getAliveOrganisms().size());
+                    System.out.printf("  Seed:         %d%n", simulator.getActualSeed());
+                    if (maxCycles != null) {
+                        System.out.printf("  Run cycles:   %,d (to cycle %,d)%n", maxCycles, simulator.getTotalCycles() + maxCycles);
+                    }
+                    System.out.println();
+                }
+                
+            } else {
+                // Fresh start
+                SimulatorConfig config = buildConfig();
+                
+                if (!quiet) {
+                    printBanner();
+                    printConfig(config);
+                }
+                
+                simulator = new Simulator(config);
+                
+                // Seed Adam
+                if (!quiet) {
+                    System.out.println("🌱 Seeding Adam...");
+                }
+                simulator.seedAdam();
             }
-            
-            // Create and configure simulator
-            simulator = new Simulator(config);
             
             // Setup graceful shutdown
             final Simulator sim = simulator;
+            final Path checkpointPath = saveCheckpoint;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 if (sim.isRunning()) {
                     System.out.println("\n⏸️  Stopping gracefully...");
                     sim.stop();
                     try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                    
+                    // Auto-save on interrupt if --save specified
+                    if (checkpointPath != null) {
+                        try {
+                            System.out.println("💾 Auto-saving checkpoint...");
+                            CheckpointStore.save(sim, checkpointPath);
+                            System.out.println("   " + CheckpointStore.getInfo(checkpointPath));
+                        } catch (Exception e) {
+                            System.err.println("❌ Failed to save checkpoint: " + e.getMessage());
+                        }
+                    }
                 }
             }));
             
@@ -85,12 +147,6 @@ public class RunCommand implements Callable<Integer> {
                 progressListener = new ConsoleProgressListener();
                 simulator.setListener(progressListener);
             }
-            
-            // Seed Adam
-            if (!quiet) {
-                System.out.println("🌱 Seeding Adam...");
-            }
-            simulator.seedAdam();
             
             // Run simulation
             if (!quiet) {
@@ -104,6 +160,18 @@ public class RunCommand implements Callable<Integer> {
             // Clear progress line before final report
             if (progressListener != null) {
                 progressListener.finish();
+            }
+            
+            // Save checkpoint if requested
+            if (saveCheckpoint != null) {
+                if (!quiet) {
+                    System.out.println();
+                    System.out.println("💾 Saving checkpoint...");
+                }
+                CheckpointStore.save(simulator, saveCheckpoint);
+                if (!quiet) {
+                    System.out.println("   " + CheckpointStore.getInfo(saveCheckpoint));
+                }
             }
             
             // Final report

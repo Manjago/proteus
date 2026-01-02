@@ -89,10 +89,26 @@ java -jar proteus-*.jar debug --cycles 100 --from 50 --to 70
 java -jar proteus-*.jar debug --cycles 200 --output debug.txt
 
 # Сохранить checkpoint
-java -jar proteus-*.jar debug --cycles 40 --save checkpoint.bin
+java -jar proteus-*.jar debug --cycles 40 --save checkpoint.mv
+
+# Продолжить из checkpoint
+java -jar proteus-*.jar debug --cycles 40 --resume checkpoint.mv
 
 # Только сводка
 java -jar proteus-*.jar debug --cycles 100 --summary
+```
+
+### Workflow с checkpoint
+
+```bash
+# 1. Debug: расставить организмы, сохранить
+java -jar proteus-*.jar debug --cycles 50 --inject bot.asm --save state.mv
+
+# 2. Run: запустить "вдолгую" без debug-вывода
+java -jar proteus-*.jar run --resume state.mv --cycles 10000 --save state.mv
+
+# 3. Debug: посмотреть что получилось
+java -jar proteus-*.jar debug --resume state.mv --cycles 100 --from 50
 ```
 
 Пример вывода:
