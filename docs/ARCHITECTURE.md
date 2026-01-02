@@ -800,23 +800,37 @@ proteus debug --cycles 40 --save checkpoint.bin
 - Seed выводится в заголовке — сохраните его для повторного запуска
 - При `--resume` seed берётся из checkpoint, параметр `--seed` игнорируется
 
-#### 5.4. 🚧 Checkpoint (save/load)
-- [x] **Checkpoint.save()** — сохранение состояния в бинарный файл
-- [x] **Checkpoint.load()** — загрузка checkpoint data
-- [x] **Checkpoint.saveSoup()** / **loadSoup()** — save/load только soup
-- [ ] **--resume** — полная реализация восстановления (in progress)
-- [ ] Сохранение состояния Random для детерминизма
+#### 5.4. 🚧 Checkpoint (MVStore)
+- [x] **CheckpointStore** — сохранение состояния в H2 MVStore
+  - Автоматическое сжатие
+  - ACID транзакции
+  - Восстановление после сбоев
+- [x] Сохранение RNG state для детерминизма
+- [ ] **--resume** — полная реализация восстановления (TODO)
+
+```java
+// Формат MVStore:
+// "meta" map:
+//   - version, cycles, seed, soup_size, org_count, stats
+// "rng" map:
+//   - state → byte[] (GameRng state)
+// "soup" map:
+//   - startAddr → int[] (non-zero regions)
+// "organisms" map:
+//   - orgId → byte[] (serialized organism)
+```
 
 ```bash
 # Workflow с checkpoint:
 
 # 1. Запуск с сохранением
-proteus debug --cycles 100 --save state.bin --seed 12345
+proteus debug --cycles 100 --save state.mv --seed 12345
 
-# 2. Продолжение с checkpoint (TODO: полная реализация)
-proteus debug --cycles 100 --resume state.bin
+# 2. Продолжение с checkpoint (TODO)
+proteus debug --cycles 100 --resume state.mv
 
 # Примечание: при resume seed восстанавливается из checkpoint!
+# Параметр --seed игнорируется при --resume
 ```
 
 #### 5.5. Memory Dump & Map API (multiplayer)

@@ -173,7 +173,7 @@ public class DebugCommand implements Callable<Integer> {
             
             // Save checkpoint if requested
             if (saveCheckpoint != null) {
-                Checkpoint.save(sim, saveCheckpoint);
+                CheckpointStore.save(sim, saveCheckpoint);
                 out.println();
                 out.println("💾 Checkpoint saved: " + saveCheckpoint);
             }

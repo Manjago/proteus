@@ -54,10 +54,10 @@
             <version>${typesafe-config.version}</version>
         </dependency>
 
-        <!-- Persistence (H2 MVStore) -->
+        <!-- Persistence (H2 MVStore only, not full H2 database) -->
         <dependency>
             <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <artifactId>h2-mvstore</artifactId>
             <version>${h2.version}</version>
         </dependency>
 

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -332,7 +331,7 @@ class VirtualCPUTest {
         @Test
         @DisplayName("COPY with 100% mutation rate always mutates")
         void copyWithMutation() {
-            VirtualCPU mutatingCpu = new VirtualCPU(1.0, new Random(42), SystemCallHandler.FAILING);
+            VirtualCPU mutatingCpu = new VirtualCPU(1.0, new GameRng(42), SystemCallHandler.FAILING);
             
             memory.set(100, 0xDEADBEEF);
             state.setRegister(0, 100); // Source
@@ -462,7 +461,7 @@ class VirtualCPUTest {
                 }
             };
             
-            VirtualCPU cpuWithHandler = new VirtualCPU(0.0, new Random(), handler);
+            VirtualCPU cpuWithHandler = new VirtualCPU(0.0, new GameRng(42), handler);
             
             state.setRegister(0, 50);
             memory.set(0, encode(ALLOCATE, 0, 1));
