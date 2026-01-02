@@ -116,15 +116,15 @@ public class FrameRecorder {
     // ========== Private helpers ==========
     
     private void recordMemory(Simulator sim, Frame.Builder builder) {
-        MemoryManager mm = sim.getMemoryManager();
-        int soupSize = mm.getSoupSize();
+        int soupSize = sim.getMemoryManager().getTotalMemory();
+        var soup = sim.getSoup();
         
         // Find contiguous non-zero regions
         int regionStart = -1;
         List<Integer> regionData = new ArrayList<>();
         
         for (int i = 0; i < soupSize; i++) {
-            int value = mm.read(i);
+            int value = soup.get(i);
             
             if (value != 0) {
                 if (regionStart == -1) {
@@ -151,13 +151,21 @@ public class FrameRecorder {
         for (Organism org : sim.getAliveOrganisms()) {
             CpuState state = org.getState();
             
+            // Copy registers manually (no getRegisters() method)
+            int[] regs = new int[8];
+            if (state != null) {
+                for (int i = 0; i < 8; i++) {
+                    regs[i] = state.getRegister(i);
+                }
+            }
+            
             Frame.OrganismSnapshot snapshot = new Frame.OrganismSnapshot(
                 org.getId(),
                 organismNames.get(org.getId()),
                 org.getStartAddr(),
                 org.getSize(),
-                state != null ? state.getIP() : 0,
-                state != null ? state.getRegisters().clone() : new int[8],
+                state != null ? state.getIp() : 0,
+                regs,
                 org.getErrors(),
                 org.getBirthCycle(),
                 org.getParentId(),

@@ -76,7 +76,7 @@ public class DebugCommand implements Callable<Integer> {
                     .reportInterval(Integer.MAX_VALUE);  // Disable progress reports
             
             if (seed != null) {
-                configBuilder.seed(seed);
+                configBuilder.randomSeed(seed);
             }
             
             SimulatorConfig config = configBuilder.build();

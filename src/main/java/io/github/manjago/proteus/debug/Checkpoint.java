@@ -47,7 +47,7 @@ public class Checkpoint {
             out.writeLong(sim.getActualSeed());
             
             // Soup size
-            int soupSize = sim.getMemoryManager().getSoupSize();
+            int soupSize = sim.getMemoryManager().getTotalMemory();
             out.writeInt(soupSize);
             
             // Find and write non-zero regions
@@ -58,7 +58,7 @@ public class Checkpoint {
             List<Integer> regionData = new ArrayList<>();
             
             for (int i = 0; i < soupSize; i++) {
-                int value = sim.getMemoryManager().read(i);
+                int value = sim.getSoup().get(i);
                 if (value != 0) {
                     if (regionStart == -1) {
                         regionStart = i;
@@ -100,13 +100,13 @@ public class Checkpoint {
                 out.writeInt(org.getAllocId());
                 
                 CpuState state = org.getState();
-                out.writeInt(state.getIP());
+                out.writeInt(state.getIp());
                 out.writeInt(state.getErrors());
                 out.writeLong(state.getAge());
                 
-                int[] regs = state.getRegisters();
-                for (int r : regs) {
-                    out.writeInt(r);
+                // Write registers one by one (no getRegisters() method)
+                for (int r = 0; r < 8; r++) {
+                    out.writeInt(state.getRegister(r));
                 }
                 
                 out.writeBoolean(state.hasPendingAllocation());
