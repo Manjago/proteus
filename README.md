@@ -76,32 +76,48 @@ java -jar target/proteus-*.jar run --cycles 500000 --soup-size 100000
 # Записать 40 циклов с Adam'ом
 java -jar proteus-*.jar debug --cycles 40
 
+# С явным seed для воспроизводимости
+java -jar proteus-*.jar debug --cycles 100 --seed 12345
+
 # Записать с инъекцией своего организма
 java -jar proteus-*.jar debug --cycles 40 --inject examples/parasite.asm --name "Predator"
 
+# Показать только циклы с 50 по 70
+java -jar proteus-*.jar debug --cycles 100 --from 50 --to 70
+
+# Вывод в файл
+java -jar proteus-*.jar debug --cycles 200 --output debug.txt
+
 # Сохранить checkpoint
 java -jar proteus-*.jar debug --cycles 40 --save checkpoint.bin
+
+# Только сводка
+java -jar proteus-*.jar debug --cycles 100 --summary
 ```
 
 Пример вывода:
 ```
-═══════════════════════════════════════════════════════════════════
-FRAME 5 | Cycle 5
-═══════════════════════════════════════════════════════════════════
+══════════════════════════════════════════════════════════════════════
+CYCLE 77
+══════════════════════════════════════════════════════════════════════
 
 📋 Events:
   🐣 Spawn: org #1 from parent #0 at addr 14 (size 14)
 
 👥 Organisms (2):
-  #0 "Adam" @ 0-13 (size 14), IP=3, errors=0, parent=#-1
-     R0-R7: [14, 0, 0, 28, 14, 14, 28, 0]
-  #1 @ 14-27 (size 14), IP=0, errors=0, parent=#0
+  Adam#0 @ 0-13 (size 14), IP=12, errors=0, parent=#-1
+     R0-R7: [14, 0, 0, 14, 14, 14, 28, 0]
+  Adam#1 @ 14-27 (size 14), IP=1, errors=0, parent=#0
+     R0-R7: [0, 0, 0, 0, 14, 0, 0, 0]
 
 💾 Memory (non-zero regions):
-  [0..27] (28 cells)
-        0: 0x03E00000  GETADDR R7           [Adam +0] <<<
-        1: 0x0280000E  MOVI R4, 14          [Adam +1]
+        0: 0x0280000E  MOVI R4, 14               [Adam#0 +0]
+        1: 0x03E00000  GETADDR R7                [Adam#0 +1]
         ...
+       12: 0x02000000  MOVI R0, 0                [Adam#0 +12] <<<
+       13: 0x3003FFF4  JMP -12                   [Adam#0 +13]
+       14: 0x0280000E  MOVI R4, 14               [Adam#1 +0]
+       15: 0x03E00000  GETADDR R7                [Adam#1 +1] <<<
 ```
 
 ## 🔧 Ассемблер

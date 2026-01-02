@@ -49,20 +49,18 @@ public class FramePrinter {
      * Print all frames.
      */
     public void printAll(List<Frame> frames) {
-        for (int i = 0; i < frames.size(); i++) {
-            if (i > 0) {
-                out.println();
-            }
-            printFrame(frames.get(i), i);
+        for (Frame frame : frames) {
+            printFrame(frame);
+            out.println();
         }
     }
     
     /**
      * Print single frame.
      */
-    public void printFrame(Frame frame, int frameIndex) {
+    public void printFrame(Frame frame) {
         out.println("═".repeat(70));
-        out.printf("FRAME %d | Cycle %d%n", frameIndex, frame.cycle());
+        out.printf("CYCLE %d%n", frame.cycle());
         out.println("═".repeat(70));
         
         // Events
@@ -92,17 +90,16 @@ public class FramePrinter {
     }
     
     /**
-     * Print frame summary (one line per frame).
+     * Print frame summary (one line per cycle).
      */
     public void printSummary(List<Frame> frames) {
-        out.println("Frame | Cycle | Orgs | Events | Memory cells");
-        out.println("------+-------+------+--------+--------------");
+        out.println("Cycle | Orgs | Events | Memory cells");
+        out.println("------+------+--------+--------------");
         
-        for (int i = 0; i < frames.size(); i++) {
-            Frame f = frames.get(i);
+        for (Frame f : frames) {
             int cells = f.memoryRegions().stream().mapToInt(r -> r.data().length).sum();
-            out.printf("%5d | %5d | %4d | %6d | %d%n",
-                i, f.cycle(), f.organisms().size(), f.events().size(), cells);
+            out.printf("%5d | %4d | %6d | %d%n",
+                f.cycle(), f.organisms().size(), f.events().size(), cells);
         }
     }
     
@@ -146,9 +143,10 @@ public class FramePrinter {
     }
     
     private void printOrganism(Frame.OrganismSnapshot org) {
-        String name = org.name() != null ? " \"" + org.name() + "\"" : "";
-        out.printf("  #%d%s @ %d-%d (size %d), IP=%d, errors=%d, parent=#%d%n",
-            org.id(), name, org.startAddr(), org.startAddr() + org.size() - 1,
+        // Format: Adam#0 или MyBot#5
+        String displayName = getDisplayName(org);
+        out.printf("  %s @ %d-%d (size %d), IP=%d, errors=%d, parent=#%d%n",
+            displayName, org.startAddr(), org.startAddr() + org.size() - 1,
             org.size(), org.ip(), org.errorCount(), org.parentId());
         
         if (showRegisters && !compactMode) {
@@ -163,14 +161,25 @@ public class FramePrinter {
         }
     }
     
-    private void printMemoryRegion(Frame.MemoryRegion region, List<Frame.OrganismSnapshot> organisms) {
-        out.printf("  [%d..%d] (%d cells)%n", 
-            region.startAddr(), region.endAddr() - 1, region.data().length);
-        
-        if (compactMode) {
-            return;
+    /**
+     * Get display name for organism.
+     * Format: BaseName#ID (e.g. Adam#0, Adam#1, MyBot#5)
+     */
+    private String getDisplayName(Frame.OrganismSnapshot org) {
+        String baseName;
+        if (org.name() != null) {
+            baseName = org.name();
+        } else if (org.parentId() < 0) {
+            baseName = "Adam";
+        } else {
+            // Child inherits parent's base name (simplified: use Adam for now)
+            baseName = "Adam";
         }
-        
+        return baseName + "#" + org.id();
+    }
+    
+    private void printMemoryRegion(Frame.MemoryRegion region, List<Frame.OrganismSnapshot> organisms) {
+        // No header - just dump all cells
         int[] data = region.data();
         for (int i = 0; i < data.length; i++) {
             int addr = region.startAddr() + i;
@@ -188,9 +197,9 @@ public class FramePrinter {
     private String findOwner(int addr, List<Frame.OrganismSnapshot> organisms) {
         for (Frame.OrganismSnapshot org : organisms) {
             if (addr >= org.startAddr() && addr < org.startAddr() + org.size()) {
-                String name = org.name() != null ? org.name() : "org#" + org.id();
+                String displayName = getDisplayName(org);
                 int offset = addr - org.startAddr();
-                return String.format("[%s +%d]", name, offset);
+                return String.format("[%s +%d]", displayName, offset);
             }
         }
         return "[free]";

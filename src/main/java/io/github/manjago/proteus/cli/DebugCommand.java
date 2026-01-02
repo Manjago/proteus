@@ -8,10 +8,13 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /**
  * CLI command: debug
@@ -21,7 +24,8 @@ import java.util.concurrent.Callable;
  * Usage:
  *   proteus debug --cycles 40                    # Record 40 cycles with Adam
  *   proteus debug --cycles 40 --inject org.asm  # Inject custom organism
- *   proteus debug --resume checkpoint.bin       # Resume from checkpoint
+ *   proteus debug --cycles 2000 --from 1950     # Show only cycles 1950+
+ *   proteus debug --cycles 100 --output out.txt # Output to file
  */
 @Command(
     name = "debug",
@@ -30,7 +34,7 @@ import java.util.concurrent.Callable;
 )
 public class DebugCommand implements Callable<Integer> {
     
-    @Option(names = {"-c", "--cycles"}, description = "Number of cycles to record", defaultValue = "40")
+    @Option(names = {"-c", "--cycles"}, description = "Number of cycles to run", defaultValue = "40")
     private int cycles;
     
     @Option(names = {"-s", "--soup-size"}, description = "Soup size", defaultValue = "1000")
@@ -51,58 +55,82 @@ public class DebugCommand implements Callable<Integer> {
     @Option(names = {"--save"}, description = "Save checkpoint after recording")
     private Path saveCheckpoint;
     
-    @Option(names = {"--compact"}, description = "Compact output (less detail)")
-    private boolean compact;
+    @Option(names = {"--from"}, description = "Show cycles starting from this number")
+    private Long fromCycle;
+    
+    @Option(names = {"--to"}, description = "Show cycles up to this number (inclusive)")
+    private Long toCycle;
+    
+    @Option(names = {"-o", "--output"}, description = "Output file (default: stdout)")
+    private Path outputFile;
     
     @Option(names = {"--summary"}, description = "Show only summary table")
     private boolean summaryOnly;
     
-    @Option(names = {"--seed"}, description = "Random seed")
+    @Option(names = {"--seed"}, description = "Random seed for reproducibility")
     private Long seed;
     
     @Override
     public Integer call() {
+        PrintStream out = System.out;
+        
         try {
-            System.out.println("═".repeat(70));
-            System.out.println("DEBUG MODE - Frame Recording");
-            System.out.println("═".repeat(70));
-            System.out.println();
+            // Setup output
+            if (outputFile != null) {
+                out = new PrintStream(new FileOutputStream(outputFile.toFile()));
+            }
+            
+            printHeader(out);
+            
+            // Determine effective seed
+            long effectiveSeed = seed != null ? seed : System.currentTimeMillis();
             
             // Create config
-            SimulatorConfig.Builder configBuilder = SimulatorConfig.builder()
+            SimulatorConfig config = SimulatorConfig.builder()
                     .soupSize(soupSize)
                     .maxCycles(cycles)
                     .maxOrganisms(100)
-                    .reportInterval(Integer.MAX_VALUE);  // Disable progress reports
+                    .randomSeed(effectiveSeed)
+                    .reportInterval(Integer.MAX_VALUE)  // Disable progress reports
+                    .build();
             
-            if (seed != null) {
-                configBuilder.randomSeed(seed);
-            }
-            
-            SimulatorConfig config = configBuilder.build();
             Simulator sim = new Simulator(config);
+            
+            // Print configuration
+            out.println("Configuration:");
+            out.printf("  Soup size:  %,d cells%n", soupSize);
+            out.printf("  Cycles:     %,d%n", cycles);
+            out.printf("  Seed:       %d%n", effectiveSeed);
+            if (fromCycle != null || toCycle != null) {
+                out.printf("  Show range: %s to %s%n", 
+                    fromCycle != null ? fromCycle.toString() : "0",
+                    toCycle != null ? toCycle.toString() : "end");
+            }
+            out.println();
             
             // Setup frame recorder
             FrameRecorder recorder = new FrameRecorder(cycles);
             sim.setFrameRecorder(recorder);
             
-            // Seed or resume
+            // Handle resume
             if (resumeCheckpoint != null) {
-                System.out.println("⚠️  Resume from checkpoint not yet implemented");
-                System.out.println("    (Checkpoint file: " + resumeCheckpoint + ")");
-                return 1;
+                out.println("⚠️  Resume from checkpoint not yet fully implemented");
+                out.println("    Checkpoint file: " + resumeCheckpoint);
+                out.println();
+                // TODO: Load checkpoint and restore state
+                // For now, just continue with normal startup
             }
             
             // Seed Adam unless disabled
             if (!noAdam) {
                 sim.seedAdam();
                 recorder.setOrganismName(0, "Adam");
-                System.out.println("🌱 Seeded Adam");
+                out.println("🌱 Seeded Adam#0");
             }
             
             // Inject custom organism if specified
             if (injectFile != null) {
-                int[] genome = assembleFile(injectFile);
+                int[] genome = assembleFile(injectFile, out);
                 if (genome == null) {
                     return 1;
                 }
@@ -110,23 +138,32 @@ public class DebugCommand implements Callable<Integer> {
                 String name = injectName != null ? injectName : injectFile.getFileName().toString().replace(".asm", "");
                 var org = sim.injectOrganism(genome, name);
                 if (org == null) {
-                    System.err.println("❌ Failed to inject organism");
+                    out.println("❌ Failed to inject organism");
                     return 1;
                 }
-                System.out.println("💉 Injected '" + name + "' (" + genome.length + " instructions)");
+                out.println("💉 Injected " + name + "#" + org.getId() + " (" + genome.length + " instructions)");
             }
             
-            System.out.println();
-            System.out.println("▶️  Running " + cycles + " cycles...");
-            System.out.println();
+            out.println();
+            out.println("▶️  Running " + cycles + " cycles...");
+            out.println();
             
             // Run simulation
             sim.run(cycles);
             
-            // Print results
+            // Filter frames by cycle range
             List<Frame> frames = recorder.getFrames();
-            FramePrinter printer = new FramePrinter();
-            printer.compactMode(compact);
+            if (fromCycle != null || toCycle != null) {
+                final long from = fromCycle != null ? fromCycle : 0;
+                final long to = toCycle != null ? toCycle : Long.MAX_VALUE;
+                frames = frames.stream()
+                        .filter(f -> f.cycle() >= from && f.cycle() <= to)
+                        .collect(Collectors.toList());
+                out.printf("Showing %d cycles (filtered from %d total)%n%n", frames.size(), recorder.getFrameCount());
+            }
+            
+            // Print results
+            FramePrinter printer = new FramePrinter(out);
             
             if (summaryOnly) {
                 printer.printSummary(frames);
@@ -137,8 +174,8 @@ public class DebugCommand implements Callable<Integer> {
             // Save checkpoint if requested
             if (saveCheckpoint != null) {
                 Checkpoint.save(sim, saveCheckpoint);
-                System.out.println();
-                System.out.println("💾 Checkpoint saved: " + saveCheckpoint);
+                out.println();
+                out.println("💾 Checkpoint saved: " + saveCheckpoint);
             }
             
             return 0;
@@ -147,16 +184,27 @@ public class DebugCommand implements Callable<Integer> {
             System.err.println("❌ Error: " + e.getMessage());
             e.printStackTrace();
             return 1;
+        } finally {
+            if (outputFile != null && out != System.out) {
+                out.close();
+            }
         }
     }
     
-    private int[] assembleFile(Path path) {
+    private void printHeader(PrintStream out) {
+        out.println("═".repeat(70));
+        out.println("PROTEUS DEBUG MODE - Frame Recording");
+        out.println("═".repeat(70));
+        out.println();
+    }
+    
+    private int[] assembleFile(Path path, PrintStream out) {
         try {
-            System.out.println("📝 Assembling: " + path);
+            out.println("📝 Assembling: " + path);
             Assembler asm = new Assembler();
             return asm.assembleFile(path);
         } catch (Exception e) {
-            System.err.println("❌ Assembly error: " + e.getMessage());
+            out.println("❌ Assembly error: " + e.getMessage());
             return null;
         }
     }
