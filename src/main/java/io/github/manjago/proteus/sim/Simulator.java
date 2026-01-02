@@ -2,6 +2,8 @@ package io.github.manjago.proteus.sim;
 
 import io.github.manjago.proteus.config.SimulatorConfig;
 import io.github.manjago.proteus.core.*;
+import io.github.manjago.proteus.debug.Frame;
+import io.github.manjago.proteus.debug.FrameRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +37,9 @@ public class Simulator {
     
     // Only alive organisms - for fast iteration
     private final List<Organism> aliveOrganisms = new ArrayList<>();
+    
+    // Debug: frame recording
+    private FrameRecorder frameRecorder;
     
     // Statistics
     private long totalCycles = 0;
@@ -85,6 +90,92 @@ public class Simulator {
         this.listener = listener != null ? listener : SimulatorListener.NOOP;
     }
     
+    /**
+     * Set frame recorder for debug mode.
+     * When set, records state at the end of each cycle.
+     */
+    public void setFrameRecorder(FrameRecorder recorder) {
+        this.frameRecorder = recorder;
+    }
+    
+    /**
+     * Get frame recorder (may be null).
+     */
+    public FrameRecorder getFrameRecorder() {
+        return frameRecorder;
+    }
+    
+    /**
+     * Inject a custom organism into the simulation.
+     * 
+     * @param genome machine code (int[])
+     * @param name optional name for debugging
+     * @return the created organism, or null if allocation failed
+     */
+    public Organism injectOrganism(int[] genome, String name) {
+        return injectOrganism(genome, name, -1);
+    }
+    
+    /**
+     * Inject a custom organism at a specific address.
+     * 
+     * @param genome machine code (int[])
+     * @param name optional name for debugging
+     * @param preferredAddr preferred address (-1 for any)
+     * @return the created organism, or null if allocation failed
+     */
+    public Organism injectOrganism(int[] genome, String name, int preferredAddr) {
+        if (genome == null || genome.length == 0) {
+            log.warn("Cannot inject empty genome");
+            return null;
+        }
+        
+        // Allocate memory
+        int addr;
+        if (preferredAddr >= 0) {
+            // Try specific address (simple: just allocate normally for now)
+            addr = memoryManager.allocate(genome.length);
+        } else {
+            addr = memoryManager.allocate(genome.length);
+        }
+        
+        if (addr < 0) {
+            log.warn("Cannot allocate {} cells for injected organism", genome.length);
+            return null;
+        }
+        
+        // Load genome into soup
+        for (int i = 0; i < genome.length; i++) {
+            soup.set(addr + i, genome[i]);
+        }
+        
+        // Create organism
+        int allocId = memoryManager.getLastAllocId();
+        int orgId = totalOrganismsCreated++;
+        Organism org = new Organism(orgId, addr, genome.length, -1, totalCycles, allocId);
+        
+        aliveOrganisms.add(org);
+        reaper.register(org);
+        aliveCount++;
+        maxAlive = Math.max(maxAlive, aliveCount);
+        
+        // Register name if provided
+        if (name != null && frameRecorder != null) {
+            frameRecorder.setOrganismName(orgId, name);
+        }
+        
+        log.info("Injected organism #{} '{}' at address {} (size: {})", 
+            orgId, name != null ? name : "unnamed", addr, genome.length);
+        listener.onSpawn(org, null, totalCycles);
+        
+        // Record event
+        if (frameRecorder != null) {
+            frameRecorder.recordEvent(new Frame.FrameEvent.Spawn(orgId, -1, addr, genome.length));
+        }
+        
+        return org;
+    }
+
     /**
      * Seed Adam (the first organism) into the soup.
      */
@@ -142,8 +233,19 @@ public class Simulator {
                     break;
                 }
                 
+                // Check if frame recording is complete
+                if (frameRecorder != null && frameRecorder.isComplete()) {
+                    log.info("Frame recording complete ({} frames)", frameRecorder.getFrameCount());
+                    break;
+                }
+                
                 runCycle();
                 cyclesDone++;
+                
+                // Record frame after cycle (captures end-of-cycle state)
+                if (frameRecorder != null) {
+                    frameRecorder.recordFrame(this);
+                }
                 
                 // Progress report
                 if (totalCycles % config.reportInterval() == 0) {
@@ -272,6 +374,11 @@ public class Simulator {
         
         log.debug("Organism {} died: {}", org.getId(), cause);
         listener.onDeath(org, cause, totalCycles);
+        
+        // Record event for frame recorder
+        if (frameRecorder != null) {
+            frameRecorder.recordEvent(new Frame.FrameEvent.Death(org.getId(), cause.name()));
+        }
     }
     
     /**
@@ -483,6 +590,12 @@ public class Simulator {
                 log.debug("Spawn: {} (parent: {}, size: {}, allocId: {})", 
                         child.getId(), parentId, actualSize, childAllocId);
                 listener.onSpawn(child, parent, totalCycles);
+                
+                // Record spawn event
+                if (frameRecorder != null) {
+                    frameRecorder.recordEvent(new Frame.FrameEvent.Spawn(
+                        child.getId(), parentId, address, actualSize));
+                }
                 
                 return true;
             }

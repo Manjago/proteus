@@ -727,23 +727,39 @@ attack:
     COPY R5, R3            ; Атаковать!
 ```
 
-#### 5.2. Manual Deploy (inject organisms)
-- [ ] **Simulator.injectOrganism(genome, addr?)** — добавить организм в работающую симуляцию
-- [ ] Команда CLI: `inject <file.bin> [--addr N]`
-- [ ] API для мультиплеера: инъекция организмов игроков
+#### 5.2. ✅ Manual Deploy (inject organisms)
+- [x] **Simulator.injectOrganism(genome, name)** — добавить организм в работающую симуляцию
+- [x] Поддержка имён организмов для debug-вывода
+- [x] Интеграция с FrameRecorder
 
-#### 5.3. Frame Recorder (debug mode)
-- [ ] **FrameRecorder** — запись полного состояния каждый цикл
-  - Режим: `--record-frames 100` (записать 100 циклов)
-  - Формат: бинарный (soup snapshots) + JSON (метаданные)
-  - Команда: `playback <recording>` — покадровый просмотр
-- [ ] Интеграция с MutationTracker для отслеживания мутантов
+#### 5.3. ✅ Frame Recorder (debug mode)
+- [x] **Frame** — структура одного кадра (soup, organisms, events)
+- [x] **FrameRecorder** — запись состояния каждый цикл
+- [x] **FramePrinter** — вывод фреймов в читаемом виде
+- [x] События: Spawn, Death, Mutation, Allocation
+- [x] CLI команда: `proteus debug --cycles 40`
 
-#### 5.4. Checkpoint (fault tolerance)
-- [ ] **CheckpointManager** — периодическое сохранение состояния
-  - H2 MVStore: soup, organisms, simulator state
-  - Триггеры: каждые N минут, graceful shutdown
-  - Команда: `resume <checkpoint>` — продолжить симуляцию
+```bash
+# Примеры использования debug режима:
+
+# Записать 40 циклов с Adam'ом
+proteus debug --cycles 40
+
+# Записать с инъекцией своего организма
+proteus debug --cycles 40 --inject examples/parasite.asm --name "MyParasite"
+
+# Только сводка (компактно)
+proteus debug --cycles 100 --summary
+
+# Сохранить checkpoint после записи
+proteus debug --cycles 40 --save checkpoint.bin
+```
+
+#### 5.4. ✅ Checkpoint (save/load)
+- [x] **Checkpoint.save()** — сохранение состояния в бинарный файл
+- [x] **Checkpoint.load()** — загрузка checkpoint data
+- [x] **Checkpoint.saveSoup()** / **loadSoup()** — save/load только soup
+- [ ] Команда CLI: `proteus resume <checkpoint>` — продолжить симуляцию (TODO)
 
 #### 5.5. Memory Dump & Map API (multiplayer)
 - [ ] **MemoryDump** — снимок soup + ownership по запросу игрока
