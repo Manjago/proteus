@@ -5,7 +5,7 @@ package io.github.manjago.proteus.core;
  * 
  * <h2>Changes in v1.2:</h2>
  * <ul>
- *   <li>JMP/JMPZ/JMPN use IP-relative offsets (encoded in instruction)</li>
+ *   <li>JMP/JMPZ/JLT use IP-relative offsets (encoded in instruction)</li>
  *   <li>LOAD/STORE use startAddr-relative addressing</li>
  *   <li>Added GETADDR instruction</li>
  * </ul>
@@ -20,7 +20,7 @@ package io.github.manjago.proteus.core;
  * [8 bits: OpCode | 3 bits: R_dst | 21 bits: immediate (unsigned)]
  * </pre>
  * 
- * <h2>JMP/JMPZ/JMPN encoding (32 bits) — v1.2:</h2>
+ * <h2>JMP/JMPZ/JLT encoding (32 bits) — v1.2:</h2>
  * <pre>
  * [8 bits: OpCode | 3 bits: R_cond1 | 3 bits: R_cond2 | 18 bits: offset (signed)]
  * </pre>
@@ -91,7 +91,7 @@ public enum OpCode {
      * Jump if Less Than (relative). if (R_a < R_b) IP = IP + offset (v1.2)
      * R_a in bits 23-21, R_b in bits 20-18, offset in bits 17-0.
      */
-    JMPN(0x32, 2, "JMPN"),
+    JLT(0x32, 2, "JLT"),
     
     // ========== System Calls (COPY uses absolute addresses) ==========
     
@@ -249,21 +249,21 @@ public enum OpCode {
     }
     
     /**
-     * Encode JMPN with two condition registers and relative offset (v1.2).
+     * Encode JLT (Jump if Less Than) with two condition registers and relative offset (v1.2).
      * Format: [opcode:8][R_a:3][R_b:3][offset:18]
      * @param rA first register
      * @param rB second register (jump if R_a < R_b)
      * @param offset signed 18-bit offset
      */
     public static int encodeJumpLess(int rA, int rB, int offset) {
-        return (JMPN.code << OPCODE_SHIFT)
+        return (JLT.code << OPCODE_SHIFT)
              | ((rA & REG_MASK) << R1_SHIFT)
              | ((rB & REG_MASK) << R2_SHIFT)
              | (offset & OFFSET18_MASK);
     }
     
     /**
-     * Decode 18-bit signed offset from JMP/JMPZ/JMPN instruction (v1.2).
+     * Decode 18-bit signed offset from JMP/JMPZ/JLT instruction (v1.2).
      * Performs sign extension from 18-bit to 32-bit.
      */
     public static int decodeOffset(int instruction) {

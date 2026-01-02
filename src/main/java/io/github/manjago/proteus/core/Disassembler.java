@@ -64,10 +64,10 @@ public final class Disassembler {
                 yield String.format("JMPZ R%d, %+d", r1, offset);
             }
             
-            // v1.2: JMPN with R_a, R_b and relative offset (jump if R_a < R_b)
-            case JMPN -> {
+            // v1.2: JLT with R_a, R_b and relative offset (jump if R_a < R_b)
+            case JLT -> {
                 int offset = decodeOffset(instruction);
-                yield String.format("JMPN R%d, R%d, %+d", r1, r2, offset);
+                yield String.format("JLT R%d, R%d, %+d", r1, r2, offset);
             }
             
             // 2 operands - system calls (absolute addresses)

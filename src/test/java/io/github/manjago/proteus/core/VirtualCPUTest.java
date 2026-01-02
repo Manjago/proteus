@@ -260,7 +260,7 @@ class VirtualCPUTest {
         }
         
         @Test
-        @DisplayName("JMPN jumps when R_a < R_b")
+        @DisplayName("JLT jumps when R_a < R_b")
         void jmpnJumpsWhenLess() {
             state.setRegister(0, 3);   // R_a = 3
             state.setRegister(1, 10);  // R_b = 10
@@ -272,7 +272,7 @@ class VirtualCPUTest {
         }
         
         @Test
-        @DisplayName("JMPN does not jump when R_a >= R_b")
+        @DisplayName("JLT does not jump when R_a >= R_b")
         void jmpnNoJumpWhenGreaterOrEqual() {
             state.setRegister(0, 10);  // R_a = 10
             state.setRegister(1, 5);   // R_b = 5
@@ -284,7 +284,7 @@ class VirtualCPUTest {
         }
         
         @Test
-        @DisplayName("JMPN does not jump when R_a == R_b")
+        @DisplayName("JLT does not jump when R_a == R_b")
         void jmpnNoJumpWhenEqual() {
             state.setRegister(0, 7);  // R_a = 7
             state.setRegister(1, 7);  // R_b = 7
@@ -296,7 +296,7 @@ class VirtualCPUTest {
         }
         
         @Test
-        @DisplayName("JMPN with negative offset works (backward jump)")
+        @DisplayName("JLT with negative offset works (backward jump)")
         void jmpnBackward() {
             state.setRegister(0, 0);   // R_a = 0
             state.setRegister(4, 10);  // R_b = 10
@@ -524,13 +524,13 @@ class VirtualCPUTest {
         @Test
         @DisplayName("Simple countdown loop executes correctly (v1.2)")
         void simpleLoop() {
-            // Program: count down from 5 to 0 using JMPN (R0 < R1)
+            // Program: count down from 5 to 0 using JLT (R0 < R1)
             // R0 = counter (starts at 5)
             // R1 = zero (comparison target)
             state.setRegister(0, 5);
             state.setRegister(1, 0);
             
-            // Loop: DEC R0, then JMPN R1, R0, -2 (jump if 0 < R0, i.e., R0 > 0)
+            // Loop: DEC R0, then JLT R1, R0, -2 (jump if 0 < R0, i.e., R0 > 0)
             memory.set(0, encode(DEC, 0));            // R0--
             memory.set(1, encodeJumpLess(1, 0, -2));  // if R1(0) < R0, jump -2 → addr 0
             memory.set(2, encode(NOP));               // End

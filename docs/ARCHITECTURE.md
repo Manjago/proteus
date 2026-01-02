@@ -136,7 +136,7 @@
 
 | Компонент | v1.1 | v1.2 |
 |-----------|------|------|
-| **JMP/JMPZ/JMPN** | Абсолютные адреса в регистрах | IP-relative offset (18-bit signed) |
+| **JMP/JMPZ/JLT** | Абсолютные адреса в регистрах | IP-relative offset (18-bit signed) |
 | **LOAD/STORE** | Абсолютная адресация | startAddr-relative (своя память) |
 | **GETADDR** | — | Новая инструкция: получить свой startAddr |
 | **Adam** | 13 инструкций, абсолютные JMP | 14 инструкций, position-independent |
@@ -154,7 +154,7 @@
 | Базовые | `NOP`, `MOV`, `MOVI`, `GETADDR` |
 | Арифметика | `ADD`, `SUB`, `INC`, `DEC` |
 | Память (relative) | `LOAD`, `STORE` |
-| Управление (IP-relative) | `JMP offset`, `JMPZ R, offset`, `JMPN Ra, Rb, offset` |
+| Управление (IP-relative) | `JMP offset`, `JMPZ R, offset`, `JLT Ra, Rb, offset` |
 | Системные (absolute) | `COPY`, `ALLOCATE`, `SPAWN` |
 | Продвинутые | `SEARCH` |
 
@@ -170,7 +170,7 @@
 [8 bits: OpCode | 3 bits: R_dst | 21 bits: immediate (unsigned)]
 ```
 
-**Формат JMP/JMPZ/JMPN (v1.2):**
+**Формат JMP/JMPZ/JLT (v1.2):**
 ```
 [8 bits: OpCode | 3 bits: R_cond1 | 3 bits: R_cond2 | 18 bits: offset (signed)]
 ```
@@ -387,7 +387,7 @@ Adam — минимальный самовоспроизводящийся ор�
 0007: INC R5            ; src++
 0008: INC R6            ; dst++
 0009: INC R0            ; counter++
-000A: JMPN R0, R4, -5   ; if counter < SIZE, goto 6
+000A: JLT R0, R4, -5   ; if counter < SIZE, goto 6
 
 ; Порождение и повтор
 000B: SPAWN R3, R4      ; Зарегистрировать потомка
@@ -727,7 +727,7 @@ java -jar proteus.jar info
 ### ✅ Выполнено (Stage 3.5-3.6: PIC + Defragmentation)
 
 - [x] GETADDR instruction
-- [x] IP-relative JMP/JMPZ/JMPN
+- [x] IP-relative JMP/JMPZ/JLT
 - [x] startAddr-relative LOAD/STORE
 - [x] Defragmenter (two-pass, all-or-nothing)
 - [x] Pending allocation tracking

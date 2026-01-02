@@ -48,7 +48,7 @@ public final class Adam {
      * 7:  INC R5           ; src++
      * 8:  INC R6           ; dst++
      * 9:  INC R0           ; counter++
-     * 10: JMPN R0, R4, -5  ; if (R0 < R4) goto 6
+     * 10: JLT R0, R4, -5  ; if (R0 < R4) goto 6
      * 
      * 11: SPAWN R3, R4     ; Create child organism
      * 12: MOVI R0, 0       ; Reset counter
@@ -74,7 +74,7 @@ public final class Adam {
             .inc(5)                 // 7: src++
             .inc(6)                 // 8: dst++
             .inc(0)                 // 9: counter++
-            .jmpn(0, 4, -5)         // 10: if R0 < R4, jump to 6
+            .jlt(0, 4, -5)          // 10: if R0 < R4, jump to 6
             
             // Spawn and repeat
             .spawn(3, 4)            // 11: Spawn child

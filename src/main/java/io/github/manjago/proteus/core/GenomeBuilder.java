@@ -13,7 +13,7 @@ import static io.github.manjago.proteus.core.OpCode.*;
  * int[] genome = GenomeBuilder.create()
  *     .nop()
  *     .inc(0)
- *     .jmpn(0, 1)
+ *     .jlt(0, 1)
  *     .build();
  * </pre>
  */
@@ -123,12 +123,12 @@ public final class GenomeBuilder {
     }
     
     /**
-     * JMPN - relative jump if R_a < R_b (v1.2).
+     * JLT - relative jump if R_a < R_b (v1.2).
      * @param rA first register
      * @param rB second register 
      * @param offset signed offset from current IP (jump if rA < rB)
      */
-    public GenomeBuilder jmpn(int rA, int rB, int offset) {
+    public GenomeBuilder jlt(int rA, int rB, int offset) {
         instructions.add(encodeJumpLess(rA, rB, offset));
         return this;
     }

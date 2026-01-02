@@ -85,7 +85,7 @@ class OpCodeTest {
         assertEquals(STORE, fromCode(0x21));
         assertEquals(JMP, fromCode(0x30));
         assertEquals(JMPZ, fromCode(0x31));
-        assertEquals(JMPN, fromCode(0x32));
+        assertEquals(JLT, fromCode(0x32));
         assertEquals(COPY, fromCode(0x40));
         assertEquals(ALLOCATE, fromCode(0x41));
         assertEquals(SPAWN, fromCode(0x42));
@@ -106,7 +106,7 @@ class OpCodeTest {
         assertEquals(2, STORE.getOperandCount());
         assertEquals(0, JMP.getOperandCount());   // v1.2: offset in instruction
         assertEquals(1, JMPZ.getOperandCount());  // v1.2: R_cond (offset in instruction)
-        assertEquals(2, JMPN.getOperandCount());  // v1.2: R_a, R_b (offset in instruction)
+        assertEquals(2, JLT.getOperandCount());  // v1.2: R_a, R_b (offset in instruction)
         assertEquals(2, COPY.getOperandCount());
         assertEquals(2, ALLOCATE.getOperandCount());
         assertEquals(2, SPAWN.getOperandCount());
@@ -229,7 +229,7 @@ class OpCodeTest {
     void encodeJumpLessEncodesCorrectly() {
         int instruction = encodeJumpLess(2, 5, 15);
         
-        assertEquals(JMPN, decodeOpCode(instruction));
+        assertEquals(JLT, decodeOpCode(instruction));
         assertEquals(2, decodeR1(instruction));
         assertEquals(5, decodeR2(instruction));
         assertEquals(15, decodeOffset(instruction));

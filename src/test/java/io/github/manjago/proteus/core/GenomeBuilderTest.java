@@ -86,12 +86,12 @@ class GenomeBuilderTest {
         int[] genome = GenomeBuilder.create()
             .jmp(-5)              // JMP with offset
             .jmpz(1, 10)          // JMPZ with R_cond and offset
-            .jmpn(3, 4, -3)       // JMPN with R_a, R_b and offset
+            .jlt(3, 4, -3)       // JLT with R_a, R_b and offset
             .build();
         
         assertEquals(JMP, decodeOpCode(genome[0]));
         assertEquals(JMPZ, decodeOpCode(genome[1]));
-        assertEquals(JMPN, decodeOpCode(genome[2]));
+        assertEquals(JLT, decodeOpCode(genome[2]));
         
         // v1.2: verify offsets are encoded correctly
         assertEquals(-5, decodeOffset(genome[0]));
@@ -100,8 +100,8 @@ class GenomeBuilderTest {
         
         // v1.2: verify registers for conditional jumps
         assertEquals(1, decodeR1(genome[1]));  // JMPZ R_cond
-        assertEquals(3, decodeR1(genome[2]));  // JMPN R_a
-        assertEquals(4, decodeR2(genome[2]));  // JMPN R_b
+        assertEquals(3, decodeR1(genome[2]));  // JLT R_a
+        assertEquals(4, decodeR2(genome[2]));  // JLT R_b
     }
 
     @Test
@@ -198,7 +198,7 @@ class GenomeBuilderTest {
             .getaddr(6)           // v1.2: new instruction
             .jmp(-5)              // v1.2: relative offset
             .jmpz(0, 3)           // v1.2: R_cond, offset
-            .jmpn(1, 2, -3)       // v1.2: R_a, R_b, offset
+            .jlt(1, 2, -3)       // v1.2: R_a, R_b, offset
             .copy(2, 3)
             .allocate(4, 5)
             .spawn(6, 7)

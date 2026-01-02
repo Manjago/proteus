@@ -95,10 +95,10 @@ class AssemblerTest {
     }
     
     @Test
-    @DisplayName("Assemble JMPN with numeric offset")
+    @DisplayName("Assemble JLT with numeric offset")
     void testJmpnNumeric() throws Exception {
-        int[] code = assembler.assemble("JMPN R0, R4, -5");
-        assertEquals(OpCode.JMPN, OpCode.decodeOpCode(code[0]));
+        int[] code = assembler.assemble("JLT R0, R4, -5");
+        assertEquals(OpCode.JLT, OpCode.decodeOpCode(code[0]));
         assertEquals(0, OpCode.decodeR1(code[0]));
         assertEquals(4, OpCode.decodeR2(code[0]));
         assertEquals(-5, OpCode.decodeOffset(code[0]));
@@ -221,7 +221,7 @@ class AssemblerTest {
                 INC R5
                 INC R6
                 INC R0
-                JMPN R0, R4, loop ; if R0 < R4 goto loop
+                JLT R0, R4, loop ; if R0 < R4 goto loop
             
             ; Spawn and repeat
                 SPAWN R3, R4
@@ -237,7 +237,7 @@ class AssemblerTest {
         assertEquals(14, OpCode.decodeImmediate(code[1]));
         assertEquals(OpCode.ALLOCATE, OpCode.decodeOpCode(code[2]));
         assertEquals(OpCode.COPY, OpCode.decodeOpCode(code[6]));
-        assertEquals(OpCode.JMPN, OpCode.decodeOpCode(code[10]));
+        assertEquals(OpCode.JLT, OpCode.decodeOpCode(code[10]));
         assertEquals(OpCode.SPAWN, OpCode.decodeOpCode(code[11]));
         assertEquals(OpCode.JMP, OpCode.decodeOpCode(code[13]));
     }

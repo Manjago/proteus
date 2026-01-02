@@ -45,7 +45,7 @@ class DisassemblerTest {
         assertEquals("JMP +5", disassemble(encodeJump(5)));
         assertEquals("JMP -10", disassemble(encodeJump(-10)));
         assertEquals("JMPZ R0, +3", disassemble(encodeJumpZero(0, 3)));
-        assertEquals("JMPN R2, R3, -5", disassemble(encodeJumpLess(2, 3, -5)));
+        assertEquals("JLT R2, R3, -5", disassemble(encodeJumpLess(2, 3, -5)));
     }
     
     @Test
@@ -144,11 +144,11 @@ class DisassemblerTest {
         for (OpCode op : OpCode.values()) {
             int instruction;
             
-            // v1.2: JMP/JMPZ/JMPN need special encoding
+            // v1.2: JMP/JMPZ/JLT need special encoding
             instruction = switch (op) {
                 case JMP -> encodeJump(5);
                 case JMPZ -> encodeJumpZero(0, 5);
-                case JMPN -> encodeJumpLess(0, 1, 5);
+                case JLT -> encodeJumpLess(0, 1, 5);
                 default -> encode(op, 1, 2, 3, 4);
             };
             
@@ -182,7 +182,7 @@ class DisassemblerTest {
         // Verify output contains expected instructions
         assertTrue(result.contains("LOAD"));
         assertTrue(result.contains("STORE"));
-        assertTrue(result.contains("JMPN R3, R4, -6"));
+        assertTrue(result.contains("JLT R3, R4, -6"));
         assertEquals(6, result.split("\n").length);
     }
 }

@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
  *     INC R5
  *     INC R6
  *     INC R0
- *     JMPN R0, R4, loop ; if R0 < R4 goto loop
+ *     JLT R0, R4, loop ; if R0 < R4 goto loop
  *     SPAWN R3, R4
  *     JMP start
  * </pre>
@@ -55,7 +55,7 @@ import java.util.regex.Pattern;
  *   <li>STORE Roff, Rs</li>
  *   <li>JMP offset|label</li>
  *   <li>JMPZ Rc, offset|label</li>
- *   <li>JMPN Ra, Rb, offset|label</li>
+ *   <li>JLT Ra, Rb, offset|label</li>
  *   <li>COPY Rs, Rd</li>
  *   <li>ALLOCATE Rsize, Raddr</li>
  *   <li>SPAWN Raddr, Rsize</li>
@@ -275,8 +275,8 @@ public class Assembler {
                 yield OpCode.encodeJumpZero(reg, offset);
             }
             
-            case JMPN -> {
-                requireOperands(tokens, 4, pl.lineNum, "JMPN Ra, Rb, offset|label");
+            case JLT -> {
+                requireOperands(tokens, 4, pl.lineNum, "JLT Ra, Rb, offset|label");
                 int ra = parseRegister(tokens[1], pl.lineNum);
                 int rb = parseRegister(tokens[2], pl.lineNum);
                 int offset = parseOffsetOrLabel(tokens[3], pl.address, labels, pl.lineNum);

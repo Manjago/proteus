@@ -16,7 +16,7 @@ import static io.github.manjago.proteus.core.OpCode.*;
  * <h2>v1.2 Changes:</h2>
  * <ul>
  *   <li>IP is now relative (absolute = startAddr + IP)</li>
- *   <li>JMP/JMPZ/JMPN use IP-relative offsets encoded in instruction</li>
+ *   <li>JMP/JMPZ/JLT use IP-relative offsets encoded in instruction</li>
  *   <li>LOAD/STORE use startAddr-relative addressing</li>
  *   <li>Added GETADDR instruction</li>
  * </ul>
@@ -203,8 +203,8 @@ public final class VirtualCPU {
                 return ExecutionResult.OK;
             }
             
-            // v1.2: JMPN - IP-relative jump if R_a < R_b
-            case JMPN -> {
+            // v1.2: JLT - IP-relative jump if R_a < R_b
+            case JLT -> {
                 int a = state.getRegister(r1);
                 int b = state.getRegister(r2);
                 if (a < b) {
