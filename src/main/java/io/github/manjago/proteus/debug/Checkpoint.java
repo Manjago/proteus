@@ -210,13 +210,14 @@ public class Checkpoint {
      * Save just the soup to a file (binary format).
      */
     public static void saveSoup(Simulator sim, Path path) throws IOException {
-        int soupSize = sim.getMemoryManager().getSoupSize();
+        int soupSize = sim.getMemoryManager().getTotalMemory();
+        var soup = sim.getSoup();
         
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(Files.newOutputStream(path)))) {
             out.writeInt(soupSize);
             for (int i = 0; i < soupSize; i++) {
-                out.writeInt(sim.getMemoryManager().read(i));
+                out.writeInt(soup.get(i));
             }
         }
         
