@@ -2,9 +2,11 @@ package io.github.manjago.proteus.core;
 
 import org.apache.commons.rng.RestorableUniformRandomProvider;
 import org.apache.commons.rng.RandomProviderState;
+import org.apache.commons.rng.core.RandomProviderDefaultState;
 import org.apache.commons.rng.simple.RandomSource;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 
 /**
  * Deterministic random number generator with save/restore state capability.
@@ -110,54 +112,54 @@ public final class GameRng {
      * Call this at the START of checkpoint creation, before any more random calls.
      */
     public GameRngState saveState() {
-        return new GameRngState(initialSeed, rng.saveState());
+        RandomProviderState state = rng.saveState();
+        // Extract raw byte[] from Apache Commons RNG state
+        byte[] stateBytes = ((RandomProviderDefaultState) state).getState();
+        return new GameRngState(initialSeed, stateBytes);
     }
     
     /**
      * Restore RNG from saved state.
      */
     public static GameRng restore(GameRngState state) {
-        return new GameRng(state.initialSeed(), state.state());
+        // Reconstruct Apache Commons RNG state from byte[]
+        RandomProviderState rngState = new RandomProviderDefaultState(state.stateBytes());
+        return new GameRng(state.initialSeed(), rngState);
     }
     
     // ========== State Record ==========
     
     /**
      * Immutable snapshot of RNG state for serialization.
+     * Uses raw byte[] instead of RandomProviderState for easy serialization.
      */
-    public record GameRngState(long initialSeed, RandomProviderState state) implements Serializable {
+    public record GameRngState(long initialSeed, byte[] stateBytes) implements Serializable {
         
         @Serial
         private static final long serialVersionUID = 1L;
         
         /**
          * Serialize to bytes for storage.
+         * Format: [8 bytes seed][4 bytes length][N bytes state]
          */
         public byte[] toBytes() {
-            try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                 ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-                oos.writeLong(initialSeed);
-                oos.writeObject(state);
-                return baos.toByteArray();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to serialize RNG state", e);
-            }
+            ByteBuffer buf = ByteBuffer.allocate(8 + 4 + stateBytes.length);
+            buf.putLong(initialSeed);
+            buf.putInt(stateBytes.length);
+            buf.put(stateBytes);
+            return buf.array();
         }
         
         /**
          * Deserialize from bytes.
          */
         public static GameRngState fromBytes(byte[] bytes) {
-            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
-                 ObjectInputStream ois = new ObjectInputStream(bais)) {
-                long seed = ois.readLong();
-                RandomProviderState state = (RandomProviderState) ois.readObject();
-                return new GameRngState(seed, state);
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to deserialize RNG state", e);
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException("RNG state class not found", e);
-            }
+            ByteBuffer buf = ByteBuffer.wrap(bytes);
+            long seed = buf.getLong();
+            int len = buf.getInt();
+            byte[] stateBytes = new byte[len];
+            buf.get(stateBytes);
+            return new GameRngState(seed, stateBytes);
         }
     }
 }
