@@ -84,7 +84,10 @@ public class CheckpointCommand implements Callable<Integer> {
                 System.out.println("🎲 RNG:");
                 if (data.hasDeterministicRng()) {
                     var rng = data.rngState();
-                    System.out.printf("   State: [%d, %d]%n", rng.state0(), rng.state1());
+                    byte[] rngBytes = rng.toBytes();
+                    System.out.printf("   Initial seed: %d%n", rng.initialSeed());
+                    System.out.printf("   State size: %d bytes%n", rngBytes.length);
+                    System.out.printf("   State hash: %08X%n", java.util.Arrays.hashCode(rngBytes));
                     System.out.println("   ✅ Deterministic resume supported");
                 } else {
                     System.out.println("   ❌ No RNG state (non-deterministic)");
@@ -177,8 +180,13 @@ public class CheckpointCommand implements Callable<Integer> {
                 if (d1.hasDeterministicRng() && d2.hasDeterministicRng()) {
                     var rng1 = d1.rngState();
                     var rng2 = d2.rngState();
-                    compareField(diffs, "rng.state0", rng1.state0(), rng2.state0());
-                    compareField(diffs, "rng.state1", rng1.state1(), rng2.state1());
+                    compareField(diffs, "rng.initialSeed", rng1.initialSeed(), rng2.initialSeed());
+                    // Compare actual state bytes
+                    byte[] bytes1 = rng1.toBytes();
+                    byte[] bytes2 = rng2.toBytes();
+                    if (!java.util.Arrays.equals(bytes1, bytes2)) {
+                        diffs.add("rng.state: bytes differ");
+                    }
                 } else if (d1.hasDeterministicRng() != d2.hasDeterministicRng()) {
                     diffs.add("rng: one has RNG state, other doesn't");
                 }
@@ -203,8 +211,10 @@ public class CheckpointCommand implements Callable<Integer> {
                     System.out.printf("   - %,d cycles%n", d1.totalCycles());
                     System.out.printf("   - %d organisms%n", d1.organisms().size());
                     System.out.printf("   - %,d soup cells checked%n", d1.soupSize());
-                    System.out.printf("   - RNG state: [%d, %d]%n", 
-                        d1.rngState().state0(), d1.rngState().state1());
+                    if (d1.hasDeterministicRng()) {
+                        System.out.printf("   - RNG state hash: %08X%n", 
+                            java.util.Arrays.hashCode(d1.rngState().toBytes()));
+                    }
                     return 0;
                 } else {
                     System.out.println("❌ CHECKPOINTS DIFFER!");
