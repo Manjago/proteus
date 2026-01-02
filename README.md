@@ -111,6 +111,70 @@ java -jar proteus-*.jar run --resume state.mv --cycles 10000 --save state.mv
 java -jar proteus-*.jar debug --resume state.mv --cycles 100 --from 50
 ```
 
+### 🧪 Подготовка эксперимента
+
+Хотите посмотреть как разные виды организмов будут конкурировать? Вот пошаговый рецепт:
+
+```bash
+# Шаг 1: Создаём мир с паразитом (без Adam!)
+#   - 1M ячеек памяти
+#   - Фиксированный seed для воспроизводимости
+#   - 1 цикл — только расставить, не запускать
+java -Xmx512m -jar proteus-*.jar debug \
+    --cycles 1 \
+    --no-adam \
+    --inject examples/parasite.asm --name "Para" \
+    --seed 12345 \
+    -s 1000000 \
+    --save experiment.mv
+
+# Шаг 2: Добавляем хаотика в тот же мир
+java -Xmx512m -jar proteus-*.jar debug \
+    --cycles 1 \
+    --inject examples/chaotic.asm --name "Chao" \
+    --resume experiment.mv \
+    --save experiment.mv
+
+# Шаг 3: Добавляем обычного репликатора (Ancestor)
+java -Xmx512m -jar proteus-*.jar debug \
+    --cycles 1 \
+    --inject examples/ancestor.asm --name "Anc" \
+    --resume experiment.mv \
+    --save experiment.mv \
+    --output initial_state.txt
+
+# Шаг 4: Запускаем "настоящую" симуляцию!
+java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
+    --resume experiment.mv \
+    --cycles 1000000 \
+    --max-organisms 5000 \
+    --save final.mv
+
+# Шаг 5: Изучаем результат
+java -jar proteus-*.jar checkpoint info final.mv
+
+# Шаг 6: Debug — смотрим что происходит в финале
+java -jar proteus-*.jar debug \
+    --resume final.mv \
+    --cycles 100 \
+    --output final_debug.txt
+```
+
+**Что происходит:**
+- Шаги 1-3: расставляем организмы по одному, каждый раз сохраняя состояние
+- Шаг 4: долгая симуляция с увеличенным heap и G1GC
+- Шаги 5-6: анализ результата
+
+**Сравнение детерминизма:**
+```bash
+# Запустить дважды с одинаковым checkpoint
+java -jar proteus-*.jar run --resume experiment.mv --cycles 10000 --save run1.mv
+java -jar proteus-*.jar run --resume experiment.mv --cycles 10000 --save run2.mv
+
+# Должны совпасть!
+java -jar proteus-*.jar checkpoint diff run1.mv run2.mv
+```
+
 Пример вывода:
 ```
 ══════════════════════════════════════════════════════════════════════
