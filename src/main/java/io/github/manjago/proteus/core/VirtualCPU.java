@@ -3,7 +3,6 @@ package io.github.manjago.proteus.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import static io.github.manjago.proteus.core.OpCode.*;
@@ -29,8 +28,8 @@ public final class VirtualCPU {
     /** Probability of mutation during COPY instruction (0.0 to 1.0) */
     private final double mutationRate;
     
-    /** Random number generator for mutations */
-    private final Random random;
+    /** Random number generator for mutations (GameRng for deterministic save/restore) */
+    private final GameRng random;
     
     /** Handler for system calls (ALLOCATE, SPAWN) */
     private final SystemCallHandler syscallHandler;
@@ -43,20 +42,20 @@ public final class VirtualCPU {
      * Mutation rate: 0.1% (0.001)
      */
     public VirtualCPU() {
-        this(0.001, new Random(), SystemCallHandler.FAILING);
+        this(0.001, new GameRng(System.currentTimeMillis()), SystemCallHandler.FAILING);
     }
     
     /**
      * Create VirtualCPU with custom mutation rate.
      */
     public VirtualCPU(double mutationRate) {
-        this(mutationRate, new Random(), SystemCallHandler.FAILING);
+        this(mutationRate, new GameRng(System.currentTimeMillis()), SystemCallHandler.FAILING);
     }
     
     /**
      * Create VirtualCPU with full configuration.
      */
-    public VirtualCPU(double mutationRate, Random random, SystemCallHandler syscallHandler) {
+    public VirtualCPU(double mutationRate, GameRng random, SystemCallHandler syscallHandler) {
         this.mutationRate = mutationRate;
         this.random = random;
         this.syscallHandler = syscallHandler;

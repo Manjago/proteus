@@ -24,6 +24,7 @@
         <picocli.version>4.7.6</picocli.version>
         <typesafe-config.version>1.4.3</typesafe-config.version>
         <h2.version>2.3.232</h2.version>
+        <commons-rng.version>1.6</commons-rng.version>
     </properties>
 
     <dependencies>
@@ -58,6 +59,13 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <version>${h2.version}</version>
+        </dependency>
+
+        <!-- Apache Commons RNG - deterministic random with save/restore state -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-rng-simple</artifactId>
+            <version>${commons-rng.version}</version>
         </dependency>
 
         <!-- Testing -->

@@ -260,7 +260,35 @@ if (org.getAllocId() >= 0) {
 - При defrag: `allocId` обновляется после `markUsed()`
 - При death/reap: `freeByAllocId()` освобождает только свои ячейки
 
-### 4.6. Lazy Deletion в Reaper ✅
+### 4.6. Детерминистичный Random (GameRng) ✅
+
+**Проблема:** java.util.Random не позволяет сохранить/восстановить состояние для checkpoint.
+
+**Решение:** Apache Commons RNG с явным save/restore:
+
+```java
+// Создание
+GameRng rng = new GameRng(seed);
+
+// Использование (API совместим с Random)
+double d = rng.nextDouble();
+int i = rng.nextInt(100);
+
+// Сохранение состояния
+GameRng.GameRngState state = rng.saveState();
+byte[] bytes = state.toBytes();  // для хранения
+
+// Восстановление
+GameRngState loaded = GameRngState.fromBytes(bytes);
+GameRng restored = GameRng.restore(loaded);
+```
+
+**Важно:**
+- Используем фиксированный алгоритм `XO_RO_SHI_RO_128_PP` — НЕ МЕНЯТЬ между версиями!
+- State сохраняем ПЕРЕД любыми random-вызовами в checkpoint
+- При resume: `--seed` игнорируется, используется state из checkpoint
+
+### 4.7. Lazy Deletion в Reaper ✅
 
 **Проблема:** `PriorityQueue.remove()` = O(n) — убийственно при миллионах организмов.
 

@@ -1,6 +1,7 @@
 package io.github.manjago.proteus.debug;
 
 import io.github.manjago.proteus.core.CpuState;
+import io.github.manjago.proteus.core.GameRng;
 import io.github.manjago.proteus.core.Organism;
 import io.github.manjago.proteus.sim.Simulator;
 import org.slf4j.Logger;
@@ -10,16 +11,14 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
  * Checkpoint: save and load simulation state.
  * 
- * Format:
+ * Format v2:
  * - Header: magic, version, metadata
+ * - RNG state (for determinism!)
  * - Soup: raw int[] (only non-zero regions)
  * - Organisms: list of serialized organisms
  * - Simulator state: cycle count, statistics
@@ -29,13 +28,16 @@ public class Checkpoint {
     private static final Logger log = LoggerFactory.getLogger(Checkpoint.class);
     
     private static final int MAGIC = 0x50524F54;  // "PROT"
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;  // v2 adds RNG state
     
     /**
      * Save checkpoint to file.
      */
     public static void save(Simulator sim, Path path) throws IOException {
         log.info("Saving checkpoint to {}", path);
+        
+        // IMPORTANT: Save RNG state FIRST, before any more random calls!
+        GameRng.GameRngState rngState = sim.getGameRng().saveState();
         
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(Files.newOutputStream(path)))) {
@@ -45,6 +47,11 @@ public class Checkpoint {
             out.writeInt(VERSION);
             out.writeLong(sim.getTotalCycles());
             out.writeLong(sim.getActualSeed());
+            
+            // RNG state (v2)
+            byte[] rngBytes = rngState.toBytes();
+            out.writeInt(rngBytes.length);
+            out.write(rngBytes);
             
             // Soup size
             int soupSize = sim.getMemoryManager().getTotalMemory();
@@ -144,12 +151,22 @@ public class Checkpoint {
             }
             
             int version = in.readInt();
-            if (version != VERSION) {
+            if (version < 1 || version > VERSION) {
                 throw new IOException("Unsupported checkpoint version: " + version);
             }
             
             long totalCycles = in.readLong();
             long seed = in.readLong();
+            
+            // RNG state (v2+)
+            GameRng.GameRngState rngState = null;
+            if (version >= 2) {
+                int rngBytesLen = in.readInt();
+                byte[] rngBytes = new byte[rngBytesLen];
+                in.readFully(rngBytes);
+                rngState = GameRng.GameRngState.fromBytes(rngBytes);
+            }
+            
             int soupSize = in.readInt();
             
             // Read soup regions
@@ -197,10 +214,11 @@ public class Checkpoint {
             int deathsByReaper = in.readInt();
             int deathsByErrors = in.readInt();
             
-            log.info("Checkpoint loaded: {} cycles, {} organisms", totalCycles, organisms.size());
+            log.info("Checkpoint loaded: {} cycles, {} organisms (v{})", 
+                totalCycles, organisms.size(), version);
             
             return new CheckpointData(
-                totalCycles, seed, soupSize, soup, organisms,
+                version, totalCycles, seed, rngState, soupSize, soup, organisms,
                 totalSpawns, deathsByReaper, deathsByErrors
             );
         }
@@ -246,15 +264,24 @@ public class Checkpoint {
      * Loaded checkpoint data.
      */
     public record CheckpointData(
+        int version,
         long totalCycles,
         long seed,
+        GameRng.GameRngState rngState,  // null for v1 checkpoints
         int soupSize,
         int[] soup,
         List<OrganismData> organisms,
         int totalSpawns,
         int deathsByReaper,
         int deathsByErrors
-    ) {}
+    ) {
+        /**
+         * Check if this checkpoint has RNG state for deterministic resume.
+         */
+        public boolean hasDeterministicRng() {
+            return rngState != null;
+        }
+    }
     
     /**
      * Organism data from checkpoint.

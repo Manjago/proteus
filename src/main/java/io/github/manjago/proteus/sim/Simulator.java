@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
@@ -59,21 +58,41 @@ public class Simulator {
     // Event listener
     private SimulatorListener listener = SimulatorListener.NOOP;
     
-    // Random seed used (for reproducibility logging)
+    // Random generator (GameRng for deterministic save/restore)
+    private final GameRng gameRng;
     private final long actualSeed;
     
     public Simulator(SimulatorConfig config) {
         this.config = config;
         this.actualSeed = config.effectiveSeed();
+        this.gameRng = new GameRng(actualSeed);
         this.soup = new AtomicIntegerArray(config.soupSize());
         this.memoryManager = new BitmapMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
         this.defragmenter = new Defragmenter(soup, memoryManager);
-        this.cpu = new VirtualCPU(config.mutationRate(), new Random(actualSeed), createHandler());
+        this.cpu = new VirtualCPU(config.mutationRate(), gameRng, createHandler());
         this.cpu.setMutationTracker(mutationTracker);
         
         log.info("Simulator created with BitmapMemoryManager (seed: {})", actualSeed);
+    }
+    
+    /**
+     * Create Simulator with pre-existing GameRng (for resume from checkpoint).
+     */
+    public Simulator(SimulatorConfig config, GameRng rng) {
+        this.config = config;
+        this.actualSeed = rng.getInitialSeed();
+        this.gameRng = rng;
+        this.soup = new AtomicIntegerArray(config.soupSize());
+        this.memoryManager = new BitmapMemoryManager(config.soupSize());
+        this.reaper = new AgeBasedReaper(memoryManager);
+        this.mutationTracker = new MutationTracker();
+        this.defragmenter = new Defragmenter(soup, memoryManager);
+        this.cpu = new VirtualCPU(config.mutationRate(), gameRng, createHandler());
+        this.cpu.setMutationTracker(mutationTracker);
+        
+        log.info("Simulator created from checkpoint (seed: {})", actualSeed);
     }
     
     /**
@@ -81,6 +100,13 @@ public class Simulator {
      */
     public long getActualSeed() {
         return actualSeed;
+    }
+    
+    /**
+     * Get GameRng for state saving.
+     */
+    public GameRng getGameRng() {
+        return gameRng;
     }
     
     /**
