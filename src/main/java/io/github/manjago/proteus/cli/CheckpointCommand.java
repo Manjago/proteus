@@ -108,8 +108,9 @@ public class CheckpointCommand implements Callable<Integer> {
                 if (!data.organisms().isEmpty()) {
                     System.out.println("🧬 Organisms:");
                     for (OrganismData org : data.organisms()) {
-                        System.out.printf("   #%d @ [%d..%d) size=%d parent=#%d allocId=%d%n",
-                            org.id, org.startAddr, org.startAddr + org.size, 
+                        String nameDisplay = org.name != null ? org.name + "#" + org.id : "#" + org.id;
+                        System.out.printf("   %s @ [%d..%d) size=%d parent=#%d allocId=%d%n",
+                            nameDisplay, org.startAddr, org.startAddr + org.size, 
                             org.size, org.parentId, org.allocId);
                         System.out.printf("      IP=%d errors=%d age=%d%n",
                             org.ip, org.errors, org.age);

@@ -22,6 +22,7 @@ public class Organism {
     private final int parentId;
     private final long birthCycle;
     private int allocId = -1;  // BitmapMM allocId for safe memory cleanup
+    private String name;  // Optional display name (e.g., "Para", "Chao")
     
     private boolean alive = true;
     
@@ -86,6 +87,33 @@ public class Organism {
      */
     public void setAllocId(int allocId) {
         this.allocId = allocId;
+    }
+    
+    /**
+     * Get display name (e.g., "Para", "Chao").
+     * Returns null if no name set.
+     */
+    public String getName() {
+        return name;
+    }
+    
+    /**
+     * Set display name.
+     */
+    public void setName(String name) {
+        this.name = name;
+    }
+    
+    /**
+     * Get display name or default based on parentId.
+     * Returns "Name#id" format.
+     */
+    public String getDisplayName() {
+        if (name != null) {
+            return name + "#" + id;
+        }
+        // Default: "org" for organisms with no name
+        return "org#" + id;
     }
     
     public CpuState getState() {

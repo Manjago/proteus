@@ -1,12 +1,14 @@
 package io.github.manjago.proteus.cli;
 
 import io.github.manjago.proteus.config.SimulatorConfig;
+import io.github.manjago.proteus.core.Assembler;
 import io.github.manjago.proteus.core.Organism;
 import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.sim.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
@@ -59,6 +61,12 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = {"-q", "--quiet"}, description = "Quiet mode (minimal output)")
     private boolean quiet;
     
+    @Option(names = {"-i", "--inject"}, description = "Inject organism from .asm file (required if not --resume)")
+    private Path injectFile;
+    
+    @Option(names = {"-n", "--name"}, description = "Name for injected organism")
+    private String injectName;
+    
     @Override
     public Integer call() {
         Simulator simulator = null;
@@ -103,7 +111,14 @@ public class RunCommand implements Callable<Integer> {
                 }
                 
             } else {
-                // Fresh start
+                // Fresh start - requires --inject
+                if (injectFile == null) {
+                    System.err.println("❌ Error: --inject is required for a fresh start");
+                    System.err.println("   Use --inject <file.asm> to specify initial organism");
+                    System.err.println("   Or use --resume <checkpoint.mv> to continue from saved state");
+                    return 1;
+                }
+                
                 SimulatorConfig config = buildConfig();
                 
                 if (!quiet) {
@@ -113,11 +128,31 @@ public class RunCommand implements Callable<Integer> {
                 
                 simulator = new Simulator(config);
                 
-                // Seed Adam
-                if (!quiet) {
-                    System.out.println("🌱 Seeding Adam...");
+                // Inject organism from file
+                try {
+                    String source = Files.readString(injectFile);
+                    Assembler assembler = new Assembler();
+                    int[] genome = assembler.assemble(source);
+                    
+                    String name = injectName != null ? injectName : 
+                        injectFile.getFileName().toString().replace(".asm", "");
+                    
+                    Organism org = simulator.injectOrganism(genome, name);
+                    if (org == null) {
+                        System.err.println("❌ Failed to inject organism (allocation failed)");
+                        return 1;
+                    }
+                    
+                    if (!quiet) {
+                        System.out.printf("🌱 Injected %s#%d (%d instructions)%n", name, org.getId(), genome.length);
+                    }
+                } catch (Assembler.AssemblerException e) {
+                    System.err.println("❌ Assembly error: " + e.getMessage());
+                    return 1;
+                } catch (Exception e) {
+                    System.err.println("❌ Failed to read " + injectFile + ": " + e.getMessage());
+                    return 1;
                 }
-                simulator.seedAdam();
             }
             
             // Setup graceful shutdown

@@ -378,6 +378,13 @@ public class CheckpointStore {
                 out.writeInt(state.getPendingAllocId());
             }
             
+            // Name (may be null) - added in checkpoint v1.1
+            String name = org.getName();
+            out.writeBoolean(name != null);
+            if (name != null) {
+                out.writeUTF(name);
+            }
+            
             return baos.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -411,6 +418,15 @@ public class CheckpointStore {
                 od.pendingAllocId = in.readInt();
             }
             
+            // Name (may be null) - added in checkpoint v1.1
+            // Check if there's more data (for backward compatibility)
+            if (in.available() > 0) {
+                boolean hasName = in.readBoolean();
+                if (hasName) {
+                    od.name = in.readUTF();
+                }
+            }
+            
             return od;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -420,6 +436,11 @@ public class CheckpointStore {
     private static Organism restoreOrganism(OrganismData od, Simulator sim) {
         // Create organism (this creates a new CpuState internally)
         Organism org = new Organism(od.id, od.startAddr, od.size, od.parentId, od.birthCycle, od.allocId);
+        
+        // Restore name
+        if (od.name != null) {
+            org.setName(od.name);
+        }
         
         // Now restore the CpuState fields
         CpuState state = org.getState();
@@ -490,6 +511,7 @@ public class CheckpointStore {
         public int parentId;
         public long birthCycle;
         public int allocId;
+        public String name;  // Display name (may be null)
         public int ip;
         public int errors;
         public long age;

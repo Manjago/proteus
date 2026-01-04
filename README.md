@@ -10,11 +10,16 @@
 # Сборка
 mvn clean package -DskipTests
 
-# Запуск симуляции (100K циклов, 1M ячеек памяти)
-./sim.sh
+# Запуск симуляции с ancestor (100K циклов, 1M ячеек памяти)
+java -jar target/proteus-*.jar run \
+    --inject examples/ancestor.asm \
+    --cycles 100000 \
+    --soup-size 1000000
 
-# Или с параметрами
-java -jar target/proteus-*.jar run --cycles 500000 --soup-size 100000
+# Или отладочный режим для изучения
+java -jar target/proteus-*.jar debug \
+    --inject examples/ancestor.asm \
+    --cycles 40
 ```
 
 ## 📊 Пример вывода
@@ -73,36 +78,36 @@ java -jar target/proteus-*.jar run --cycles 500000 --soup-size 100000
 Покадровый просмотр симуляции для понимания как всё работает:
 
 ```bash
-# Записать 40 циклов с Adam'ом
-java -jar proteus-*.jar debug --cycles 40
+# Записать 40 циклов с ancestor
+java -jar proteus-*.jar debug --cycles 40 --inject examples/ancestor.asm
 
 # С явным seed для воспроизводимости
-java -jar proteus-*.jar debug --cycles 100 --seed 12345
+java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --seed 12345
 
-# Записать с инъекцией своего организма
+# С именем для организма
 java -jar proteus-*.jar debug --cycles 40 --inject examples/parasite.asm --name "Predator"
 
 # Показать только циклы с 50 по 70
-java -jar proteus-*.jar debug --cycles 100 --from 50 --to 70
+java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --from 50 --to 70
 
 # Вывод в файл
-java -jar proteus-*.jar debug --cycles 200 --output debug.txt
+java -jar proteus-*.jar debug --cycles 200 --inject examples/ancestor.asm --output debug.txt
 
 # Сохранить checkpoint
-java -jar proteus-*.jar debug --cycles 40 --save checkpoint.mv
+java -jar proteus-*.jar debug --cycles 40 --inject examples/ancestor.asm --save checkpoint.mv
 
-# Продолжить из checkpoint
+# Продолжить из checkpoint (--inject не нужен)
 java -jar proteus-*.jar debug --cycles 40 --resume checkpoint.mv
 
 # Только сводка
-java -jar proteus-*.jar debug --cycles 100 --summary
+java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --summary
 ```
 
 ### Workflow с checkpoint
 
 ```bash
-# 1. Debug: расставить организмы, сохранить
-java -jar proteus-*.jar debug --cycles 50 --inject bot.asm --save state.mv
+# 1. Debug: создать мир с организмом, сохранить
+java -jar proteus-*.jar debug --cycles 50 --inject myorg.asm --save state.mv
 
 # 2. Run: запустить "вдолгую" без debug-вывода
 java -jar proteus-*.jar run --resume state.mv --cycles 10000 --save state.mv
@@ -116,13 +121,12 @@ java -jar proteus-*.jar debug --resume state.mv --cycles 100 --from 50
 Хотите посмотреть как разные виды организмов будут конкурировать? Вот пошаговый рецепт:
 
 ```bash
-# Шаг 1: Создаём мир с паразитом (без Adam!)
+# Шаг 1: Создаём мир с паразитом
 #   - 1M ячеек памяти
 #   - Фиксированный seed для воспроизводимости
 #   - 1 цикл — только расставить, не запускать
 java -Xmx512m -jar proteus-*.jar debug \
     --cycles 1 \
-    --no-adam \
     --inject examples/parasite.asm --name "Para" \
     --seed 12345 \
     -s 1000000 \
@@ -150,7 +154,7 @@ java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
     --max-organisms 5000 \
     --save final.mv
 
-# Шаг 5: Изучаем результат
+# Шаг 5: Изучаем результат (с именами организмов!)
 java -jar proteus-*.jar checkpoint info final.mv
 
 # Шаг 6: Debug — смотрим что происходит в финале
@@ -162,6 +166,7 @@ java -jar proteus-*.jar debug \
 
 **Что происходит:**
 - Шаги 1-3: расставляем организмы по одному, каждый раз сохраняя состояние
+- Имена организмов (Para, Chao, Anc) сохраняются в checkpoint!
 - Шаг 4: долгая симуляция с увеличенным heap и G1GC
 - Шаги 5-6: анализ результата
 

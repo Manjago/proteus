@@ -41,14 +41,11 @@ public class DebugCommand implements Callable<Integer> {
     @Option(names = {"-s", "--soup-size"}, description = "Soup size (ignored if --resume)", defaultValue = "1000")
     private int soupSize;
     
-    @Option(names = {"-i", "--inject"}, description = "Inject organism from .asm file")
+    @Option(names = {"-i", "--inject"}, description = "Inject organism from .asm file (required if not --resume)")
     private Path injectFile;
     
     @Option(names = {"-n", "--name"}, description = "Name for injected organism")
     private String injectName;
-    
-    @Option(names = {"--no-adam"}, description = "Don't seed Adam (use with --inject)")
-    private boolean noAdam;
     
     @Option(names = {"--resume"}, description = "Resume from checkpoint file (.mv)")
     private Path resumeCheckpoint;
@@ -110,7 +107,14 @@ public class DebugCommand implements Callable<Integer> {
                 out.println();
                 
             } else {
-                // Fresh start
+                // Fresh start - requires --inject
+                if (injectFile == null) {
+                    out.println("❌ Error: --inject is required for a fresh start");
+                    out.println("   Use --inject <file.asm> to specify initial organism");
+                    out.println("   Or use --resume <checkpoint.mv> to continue from saved state");
+                    return 1;
+                }
+                
                 long effectiveSeed = seed != null ? seed : System.currentTimeMillis();
                 
                 SimulatorConfig config = SimulatorConfig.builder()
@@ -135,21 +139,16 @@ public class DebugCommand implements Callable<Integer> {
                         toCycle != null ? toCycle.toString() : "end");
                 }
                 out.println();
-                
-                // Seed Adam unless disabled
-                if (!noAdam) {
-                    sim.seedAdam();
-                    out.println("🌱 Seeded Adam#0");
-                }
             }
             
             // Setup frame recorder
             FrameRecorder recorder = new FrameRecorder(cycles);
             sim.setFrameRecorder(recorder);
             
-            // Name existing organisms
+            // Register names for existing organisms in frame recorder
             for (var org : sim.getAliveOrganisms()) {
-                String name = org.getParentId() < 0 ? "Adam" : null;
+                // Use name from organism if available (restored from checkpoint)
+                String name = org.getName();
                 recorder.setOrganismName(org.getId(), name);
             }
             

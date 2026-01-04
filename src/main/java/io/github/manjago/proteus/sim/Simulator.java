@@ -221,12 +221,17 @@ public class Simulator {
         int orgId = totalOrganismsCreated++;
         Organism org = new Organism(orgId, addr, genome.length, -1, totalCycles, allocId);
         
+        // Set name on organism (persisted in checkpoint)
+        if (name != null) {
+            org.setName(name);
+        }
+        
         aliveOrganisms.add(org);
         reaper.register(org);
         aliveCount++;
         maxAlive = Math.max(maxAlive, aliveCount);
         
-        // Register name if provided
+        // Register name in frame recorder for display
         if (name != null && frameRecorder != null) {
             frameRecorder.setOrganismName(orgId, name);
         }
