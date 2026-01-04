@@ -3,14 +3,19 @@ package io.github.manjago.proteus.cli;
 import io.github.manjago.proteus.config.SimulatorConfig;
 import io.github.manjago.proteus.core.Assembler;
 import io.github.manjago.proteus.core.Organism;
+import io.github.manjago.proteus.debug.*;
 import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.sim.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /**
  * Run simulation command.
@@ -46,9 +51,6 @@ public class RunCommand implements Callable<Integer> {
     @Option(names = {"--max-organisms"}, description = "Maximum living organisms")
     private Integer maxOrganisms;
     
-    @Option(names = {"-o", "--output"}, description = "Output file for state")
-    private Path outputFile;
-    
     @Option(names = {"--resume"}, description = "Resume from checkpoint file (.mv)")
     private Path resumeCheckpoint;
     
@@ -66,6 +68,19 @@ public class RunCommand implements Callable<Integer> {
     
     @Option(names = {"-n", "--name"}, description = "Name for injected organism")
     private String injectName;
+    
+    // Debug options (frame recording)
+    @Option(names = {"--debug"}, description = "Enable debug mode with frame recording (output to file or '-' for stdout)")
+    private String debugOutput;
+    
+    @Option(names = {"--from"}, description = "Show cycles starting from this number (requires --debug)")
+    private Long fromCycle;
+    
+    @Option(names = {"--to"}, description = "Show cycles up to this number (requires --debug)")
+    private Long toCycle;
+    
+    @Option(names = {"--summary"}, description = "Show only summary table (requires --debug)")
+    private boolean summaryOnly;
     
     @Override
     public Integer call() {
@@ -87,14 +102,20 @@ public class RunCommand implements Callable<Integer> {
                     }
                 }
                 
-                // Build config override if needed
-                SimulatorConfig configOverride = null;
-                if (maxCycles != null || reportInterval != null) {
-                    configOverride = SimulatorConfig.builder()
-                            .maxCycles(maxCycles != null ? maxCycles : 0)
-                            .reportInterval(reportInterval != null ? reportInterval : 1000)
-                            .build();
-                }
+                // Load checkpoint data first to get saved config values
+                var checkpointData = CheckpointStore.load(resumeCheckpoint);
+                
+                // Build config override: start with checkpoint values, override CLI args
+                var builder = SimulatorConfig.builder()
+                        .soupSize(checkpointData.soupSize())
+                        .mutationRate(checkpointData.mutationRate())
+                        .maxErrors(checkpointData.maxErrors())
+                        .maxOrganisms(maxOrganisms != null ? maxOrganisms : checkpointData.maxOrganisms())
+                        .maxCycles(maxCycles != null ? maxCycles : 0)
+                        .reportInterval(reportInterval != null ? reportInterval : 1000)
+                        .randomSeed(checkpointData.seed());
+                
+                SimulatorConfig configOverride = builder.build();
                 
                 simulator = CheckpointStore.restore(resumeCheckpoint, configOverride);
                 
@@ -103,11 +124,40 @@ public class RunCommand implements Callable<Integer> {
                     System.out.printf("  Soup size:    %,d cells%n", simulator.getConfig().soupSize());
                     System.out.printf("  Start cycle:  %,d%n", simulator.getTotalCycles());
                     System.out.printf("  Organisms:    %d%n", simulator.getAliveOrganisms().size());
+                    System.out.printf("  Max organisms:%,d%n", simulator.getConfig().maxOrganisms());
                     System.out.printf("  Seed:         %d%n", simulator.getActualSeed());
                     if (maxCycles != null) {
                         System.out.printf("  Run cycles:   %,d (to cycle %,d)%n", maxCycles, simulator.getTotalCycles() + maxCycles);
                     }
                     System.out.println();
+                }
+                
+                // Optional: inject additional organism into resumed world
+                if (injectFile != null) {
+                    try {
+                        String source = Files.readString(injectFile);
+                        Assembler assembler = new Assembler();
+                        int[] genome = assembler.assemble(source);
+                        
+                        String name = injectName != null ? injectName : 
+                            injectFile.getFileName().toString().replace(".asm", "");
+                        
+                        Organism org = simulator.injectOrganism(genome, name);
+                        if (org == null) {
+                            System.err.println("❌ Failed to inject organism (allocation failed)");
+                            return 1;
+                        }
+                        
+                        if (!quiet) {
+                            System.out.printf("💉 Injected %s#%d (%d instructions)%n", name, org.getId(), genome.length);
+                        }
+                    } catch (Assembler.AssemblerException e) {
+                        System.err.println("❌ Assembly error: " + e.getMessage());
+                        return 1;
+                    } catch (Exception e) {
+                        System.err.println("❌ Failed to read " + injectFile + ": " + e.getMessage());
+                        return 1;
+                    }
                 }
                 
             } else {
@@ -155,6 +205,36 @@ public class RunCommand implements Callable<Integer> {
                 }
             }
             
+            // Setup debug mode (frame recording) if requested
+            FrameRecorder frameRecorder = null;
+            PrintStream debugOut = null;
+            boolean isDebugMode = debugOutput != null;
+            
+            if (isDebugMode) {
+                // Setup output stream
+                if ("-".equals(debugOutput)) {
+                    debugOut = System.out;
+                } else {
+                    debugOut = new PrintStream(new FileOutputStream(debugOutput));
+                }
+                
+                // Setup frame recorder
+                long cyclesToRecord = maxCycles != null ? maxCycles : 1000;
+                frameRecorder = new FrameRecorder((int) Math.min(cyclesToRecord, Integer.MAX_VALUE));
+                simulator.setFrameRecorder(frameRecorder);
+                
+                // Register names for existing organisms
+                for (var org : simulator.getAliveOrganisms()) {
+                    frameRecorder.setOrganismName(org.getId(), org.getName());
+                }
+                
+                // Print debug header
+                debugOut.println("═".repeat(70));
+                debugOut.println("PROTEUS DEBUG MODE - Frame Recording");
+                debugOut.println("═".repeat(70));
+                debugOut.println();
+            }
+            
             // Setup graceful shutdown
             final Simulator sim = simulator;
             final Path checkpointPath = saveCheckpoint;
@@ -195,6 +275,35 @@ public class RunCommand implements Callable<Integer> {
             // Clear progress line before final report
             if (progressListener != null) {
                 progressListener.finish();
+            }
+            
+            // Output debug frames if in debug mode
+            if (isDebugMode && frameRecorder != null) {
+                List<Frame> frames = frameRecorder.getFrames();
+                
+                // Filter by cycle range if specified
+                if (fromCycle != null || toCycle != null) {
+                    final long from = fromCycle != null ? fromCycle : 0;
+                    final long to = toCycle != null ? toCycle : Long.MAX_VALUE;
+                    frames = frames.stream()
+                            .filter(f -> f.cycle() >= from && f.cycle() <= to)
+                            .collect(Collectors.toList());
+                    debugOut.printf("Showing %d cycles (filtered from %d total)%n%n", 
+                            frames.size(), frameRecorder.getFrameCount());
+                }
+                
+                // Print frames
+                FramePrinter printer = new FramePrinter(debugOut);
+                if (summaryOnly) {
+                    printer.printSummary(frames);
+                } else {
+                    printer.printAll(frames);
+                }
+                
+                // Close debug output if it's a file
+                if (debugOut != null && debugOut != System.out) {
+                    debugOut.close();
+                }
             }
             
             // Save checkpoint if requested
@@ -299,7 +408,6 @@ public class RunCommand implements Callable<Integer> {
         if (randomSeed != null) builder.randomSeed(randomSeed);
         if (maxOrganisms != null) builder.maxOrganisms(maxOrganisms);
         if (maxCycles != null) builder.maxCycles(maxCycles);
-        if (outputFile != null) builder.dataFile(outputFile);
         if (reportInterval != null) builder.reportInterval(reportInterval);
         
         return builder.build();

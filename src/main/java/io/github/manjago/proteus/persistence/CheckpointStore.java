@@ -177,19 +177,10 @@ public class CheckpointStore {
     public static Simulator restore(Path path, SimulatorConfig configOverride) throws IOException {
         CheckpointData data = load(path);
         
-        // Build config
+        // Build config - use override if provided, otherwise use checkpoint values
         SimulatorConfig config;
         if (configOverride != null) {
-            // Use override but keep soup size from checkpoint
-            config = SimulatorConfig.builder()
-                    .soupSize(data.soupSize())
-                    .mutationRate(configOverride.mutationRate())
-                    .maxErrors(configOverride.maxErrors())
-                    .maxOrganisms(configOverride.maxOrganisms())
-                    .maxCycles(configOverride.maxCycles())
-                    .reportInterval(configOverride.reportInterval())
-                    .randomSeed(data.seed())  // Always use checkpoint seed
-                    .build();
+            config = configOverride;
         } else {
             config = SimulatorConfig.builder()
                     .soupSize(data.soupSize())
@@ -199,7 +190,6 @@ public class CheckpointStore {
                     .randomSeed(data.seed())
                     .build();
         }
-        
         // Restore RNG
         GameRng rng;
         if (data.hasDeterministicRng()) {

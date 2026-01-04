@@ -75,45 +75,52 @@ java -jar target/proteus-*.jar debug \
 
 ## 🔍 Debug Mode
 
-Покадровый просмотр симуляции для понимания как всё работает:
+Покадровый просмотр симуляции для понимания как всё работает. Debug режим включается флагом `--debug`:
 
 ```bash
-# Записать 40 циклов с ancestor
-java -jar proteus-*.jar debug --cycles 40 --inject examples/ancestor.asm
+# Записать 40 циклов в файл
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 40 --debug debug.txt
+
+# Вывод в stdout (используйте '-')
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 40 --debug -
 
 # С явным seed для воспроизводимости
-java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --seed 12345
-
-# С именем для организма
-java -jar proteus-*.jar debug --cycles 40 --inject examples/parasite.asm --name "Predator"
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 100 --seed 12345 --debug debug.txt
 
 # Показать только циклы с 50 по 70
-java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --from 50 --to 70
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 100 --debug debug.txt --from 50 --to 70
 
-# Вывод в файл
-java -jar proteus-*.jar debug --cycles 200 --inject examples/ancestor.asm --output debug.txt
+# Только сводка (без покадрового вывода)
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 100 --debug debug.txt --summary
 
-# Сохранить checkpoint
-java -jar proteus-*.jar debug --cycles 40 --inject examples/ancestor.asm --save checkpoint.mv
+# Сохранить checkpoint после debug
+java -jar proteus-*.jar run --inject examples/ancestor.asm \
+    --cycles 40 --debug debug.txt --save checkpoint.mv
 
-# Продолжить из checkpoint (--inject не нужен)
-java -jar proteus-*.jar debug --cycles 40 --resume checkpoint.mv
-
-# Только сводка
-java -jar proteus-*.jar debug --cycles 100 --inject examples/ancestor.asm --summary
+# Продолжить из checkpoint
+java -jar proteus-*.jar run --resume checkpoint.mv \
+    --cycles 40 --debug debug.txt
 ```
 
 ### Workflow с checkpoint
 
 ```bash
-# 1. Debug: создать мир с организмом, сохранить
-java -jar proteus-*.jar debug --cycles 50 --inject myorg.asm --save state.mv
+# 1. Создать мир с организмом, записать debug, сохранить
+java -jar proteus-*.jar run --inject myorg.asm \
+    --cycles 50 --debug initial.txt --save state.mv
 
-# 2. Run: запустить "вдолгую" без debug-вывода
-java -jar proteus-*.jar run --resume state.mv --cycles 10000 --save state.mv
+# 2. Запустить "вдолгую" без debug
+java -jar proteus-*.jar run --resume state.mv \
+    --cycles 100000 --save state.mv
 
-# 3. Debug: посмотреть что получилось
-java -jar proteus-*.jar debug --resume state.mv --cycles 100 --from 50
+# 3. Посмотреть что получилось
+java -jar proteus-*.jar run --resume state.mv \
+    --cycles 100 --debug result.txt
 ```
 
 ### 🧪 Подготовка эксперимента
@@ -125,7 +132,7 @@ java -jar proteus-*.jar debug --resume state.mv --cycles 100 --from 50
 #   - 1M ячеек памяти
 #   - Фиксированный seed для воспроизводимости
 #   - 1 цикл — только расставить, не запускать
-java -Xmx512m -jar proteus-*.jar debug \
+java -Xmx512m -jar proteus-*.jar run \
     --cycles 1 \
     --inject examples/parasite.asm --name "Para" \
     --seed 12345 \
@@ -133,19 +140,19 @@ java -Xmx512m -jar proteus-*.jar debug \
     --save experiment.mv
 
 # Шаг 2: Добавляем хаотика в тот же мир
-java -Xmx512m -jar proteus-*.jar debug \
+java -Xmx512m -jar proteus-*.jar run \
     --cycles 1 \
     --inject examples/chaotic.asm --name "Chao" \
     --resume experiment.mv \
     --save experiment.mv
 
 # Шаг 3: Добавляем обычного репликатора (Ancestor)
-java -Xmx512m -jar proteus-*.jar debug \
+java -Xmx512m -jar proteus-*.jar run \
     --cycles 1 \
     --inject examples/ancestor.asm --name "Anc" \
     --resume experiment.mv \
     --save experiment.mv \
-    --output initial_state.txt
+    --debug initial_state.txt
 
 # Шаг 4: Запускаем "настоящую" симуляцию!
 java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
@@ -157,11 +164,11 @@ java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
 # Шаг 5: Изучаем результат (с именами организмов!)
 java -jar proteus-*.jar checkpoint info final.mv
 
-# Шаг 6: Debug — смотрим что происходит в финале
-java -jar proteus-*.jar debug \
+# Шаг 6: Смотрим что происходит в финале
+java -jar proteus-*.jar run \
     --resume final.mv \
     --cycles 100 \
-    --output final_debug.txt
+    --debug final_debug.txt
 ```
 
 **Что происходит:**

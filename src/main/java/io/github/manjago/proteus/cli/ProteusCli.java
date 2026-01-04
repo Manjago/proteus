@@ -7,8 +7,7 @@ import picocli.CommandLine.Command;
  * Proteus CLI - Swiss Army Knife for artificial life simulation.
  * 
  * Usage:
- *   proteus run [options]            - Run simulation
- *   proteus debug [options]          - Debug mode with frame recording
+ *   proteus run [options]            - Run simulation (with optional --debug for frame recording)
  *   proteus checkpoint info <file>   - Show checkpoint info
  *   proteus checkpoint diff <a> <b>  - Compare checkpoints
  *   proteus assemble <file>          - Assemble source to binary
@@ -22,7 +21,6 @@ import picocli.CommandLine.Command;
     version = "Proteus 1.0.0",
     subcommands = {
         RunCommand.class,
-        DebugCommand.class,
         CheckpointCommand.class,
         AssembleCommand.class,
         AnalyzeCommand.class,
