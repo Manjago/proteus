@@ -53,6 +53,15 @@ public interface SimulatorListener {
     default void onCheckpoint(long cycle) {}
     
     /**
+     * Called when heap memory pressure is critical (> 85%).
+     * Gives listener a chance to save checkpoint before OOM.
+     * 
+     * @param cycle current cycle
+     * @param heapUsagePercent current heap usage (0-100)
+     */
+    default void onMemoryPressure(long cycle, int heapUsagePercent) {}
+    
+    /**
      * No-op listener that does nothing.
      */
     SimulatorListener NOOP = new SimulatorListener() {};

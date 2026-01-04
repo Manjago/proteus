@@ -302,6 +302,28 @@ public class Simulator {
                     if (rawSize > aliveCount * 2 + 10_000) {
                         reaper.cleanup();
                     }
+                    
+                    // Memory pressure check - trigger GC if heap is getting full
+                    long usedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+                    long maxMem = Runtime.getRuntime().maxMemory();
+                    int heapUsagePercent = (int) ((usedMem * 100) / maxMem);
+                    
+                    if (heapUsagePercent > 85) {
+                        log.warn("High heap usage: {}% - triggering GC and notifying listener", heapUsagePercent);
+                        
+                        // Notify listener first (emergency checkpoint opportunity)
+                        listener.onMemoryPressure(totalCycles, heapUsagePercent);
+                        
+                        // Then try GC
+                        System.gc();
+                        
+                        // Check again after GC
+                        usedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+                        heapUsagePercent = (int) ((usedMem * 100) / maxMem);
+                        if (heapUsagePercent > 90) {
+                            log.error("Critical heap usage after GC: {}% - OOM likely", heapUsagePercent);
+                        }
+                    }
                 }
                 
                 // Checkpoint

@@ -6,6 +6,8 @@ import io.github.manjago.proteus.core.Organism;
 import io.github.manjago.proteus.debug.*;
 import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.sim.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -33,6 +35,8 @@ import java.util.stream.Collectors;
 )
 public class RunCommand implements Callable<Integer> {
     
+    private static final Logger log = LoggerFactory.getLogger(RunCommand.class);
+    
     @Option(names = {"-f", "--config"}, description = "Configuration file (HOCON)")
     private Path configFile;
     
@@ -56,6 +60,9 @@ public class RunCommand implements Callable<Integer> {
     
     @Option(names = {"--save"}, description = "Save checkpoint after run (.mv)")
     private Path saveCheckpoint;
+    
+    @Option(names = {"--checkpoint-interval"}, description = "Auto-save checkpoint every N cycles (requires --save)")
+    private Long checkpointInterval;
     
     @Option(names = {"--report-interval"}, description = "Progress report interval (cycles)")
     private Integer reportInterval;
@@ -113,6 +120,7 @@ public class RunCommand implements Callable<Integer> {
                         .maxOrganisms(maxOrganisms != null ? maxOrganisms : checkpointData.maxOrganisms())
                         .maxCycles(maxCycles != null ? maxCycles : 0)
                         .reportInterval(reportInterval != null ? reportInterval : 1000)
+                        .checkpointInterval(checkpointInterval != null ? checkpointInterval : 0)
                         .randomSeed(checkpointData.seed());
                 
                 SimulatorConfig configOverride = builder.build();
@@ -257,14 +265,36 @@ public class RunCommand implements Callable<Integer> {
                 }
             }));
             
-            // Set listener for console output
+            // Set listener for console output and auto-checkpoint
             if (!quiet) {
                 progressListener = new ConsoleProgressListener();
                 simulator.setListener(progressListener);
+                
+                // Configure auto-checkpoint if requested
+                if (checkpointInterval != null && checkpointInterval > 0 && saveCheckpoint != null) {
+                    progressListener.setCheckpointConfig(simulator, saveCheckpoint);
+                    // Also configure simulator's checkpoint interval
+                    // Note: this requires updating the config which is immutable, so we'll use the listener
+                    log.info("Auto-checkpoint every {} cycles to {}", checkpointInterval, saveCheckpoint);
+                    if (!quiet) {
+                        System.out.printf("📸 Auto-checkpoint every %,d cycles%n", checkpointInterval);
+                    }
+                }
             }
             
             // Run simulation
             if (!quiet) {
+                // Warn about long simulation without auto-checkpoint
+                long cyclesToRun = maxCycles != null ? maxCycles : 0;
+                boolean hasAutoCheckpoint = checkpointInterval != null && checkpointInterval > 0 && saveCheckpoint != null;
+                
+                if (cyclesToRun > 100_000 && !hasAutoCheckpoint && saveCheckpoint != null) {
+                    System.out.println("⚠️  Long simulation without auto-checkpoint!");
+                    System.out.println("   Consider adding --checkpoint-interval 50000");
+                    System.out.println("   This will save progress every 50K cycles.");
+                    System.out.println();
+                }
+                
                 System.out.println("▶️  Running simulation...\n");
             }
             
@@ -328,10 +358,20 @@ public class RunCommand implements Callable<Integer> {
         } catch (java.io.IOException e) {
             System.out.println();
             System.out.println("❌ Checkpoint error: " + e.getMessage());
+            log.error("Checkpoint I/O error", e);
             e.printStackTrace();
             return 1;
             
         } catch (OutOfMemoryError e) {
+            // Force flush logs immediately (before we run out of memory completely)
+            log.error("OUT OF MEMORY! Heap exhausted", e);
+            
+            // Try to force log flush
+            try {
+                // SLF4J doesn't have direct flush, but we can try to trigger it
+                Thread.sleep(100);  // Give async loggers time to flush
+            } catch (InterruptedException ignored) {}
+            
             // Try to report what we can
             System.out.println();
             System.out.println("❌ OUT OF MEMORY!");
@@ -345,6 +385,8 @@ public class RunCommand implements Callable<Integer> {
                     System.out.printf("   Reaper queue: %,d organisms%n", stats.reaperQueueSize());
                     System.out.printf("   Cycle: %,d  |  Spawns: %,d  |  Alive: %,d%n", 
                             stats.totalCycles(), stats.totalSpawns(), stats.aliveCount());
+                    log.error("OOM stats: cycle={}, spawns={}, alive={}, reaperQueue={}", 
+                            stats.totalCycles(), stats.totalSpawns(), stats.aliveCount(), stats.reaperQueueSize());
                 } catch (Throwable ignored) {
                     // Can't get stats - too little memory
                 }
@@ -409,6 +451,7 @@ public class RunCommand implements Callable<Integer> {
         if (maxOrganisms != null) builder.maxOrganisms(maxOrganisms);
         if (maxCycles != null) builder.maxCycles(maxCycles);
         if (reportInterval != null) builder.reportInterval(reportInterval);
+        if (checkpointInterval != null) builder.checkpointInterval(checkpointInterval);
         
         return builder.build();
     }
@@ -500,11 +543,22 @@ public class RunCommand implements Callable<Integer> {
      * Console progress listener with live single-line updates.
      */
     private static class ConsoleProgressListener implements SimulatorListener {
+        private static final Logger log = LoggerFactory.getLogger(ConsoleProgressListener.class);
         private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
         private static final String CLEAR_LINE = "\r\033[K"; // ANSI: carriage return + clear to end
         private int spinnerIdx = 0;
         private boolean needsClear = false;
         private final long startTime = System.currentTimeMillis();
+        
+        // For auto-checkpoint
+        private Simulator simulator;
+        private Path checkpointPath;
+        private long lastCheckpointCycle = 0;
+        
+        public void setCheckpointConfig(Simulator simulator, Path checkpointPath) {
+            this.simulator = simulator;
+            this.checkpointPath = checkpointPath;
+        }
         
         @Override
         public void onProgress(SimulatorStats stats) {
@@ -538,7 +592,42 @@ public class RunCommand implements Callable<Integer> {
         
         @Override
         public void onCheckpoint(long cycle) {
-            // Checkpoints logged to file, not console (keeps display clean)
+            if (simulator != null && checkpointPath != null && cycle > lastCheckpointCycle) {
+                try {
+                    CheckpointStore.save(simulator, checkpointPath);
+                    lastCheckpointCycle = cycle;
+                    log.info("Auto-checkpoint saved at cycle {} to {}", cycle, checkpointPath);
+                } catch (Exception e) {
+                    log.error("Failed to save auto-checkpoint at cycle {}: {}", cycle, e.getMessage());
+                }
+            }
+        }
+        
+        /**
+         * Emergency checkpoint save when heap is critically full.
+         * Called by Simulator when heap usage > 90%.
+         */
+        public void emergencyCheckpoint(long cycle) {
+            if (simulator != null && checkpointPath != null) {
+                try {
+                    System.out.print(CLEAR_LINE);
+                    System.out.println("⚠️  High memory pressure - emergency checkpoint...");
+                    CheckpointStore.save(simulator, checkpointPath);
+                    lastCheckpointCycle = cycle;
+                    log.warn("Emergency checkpoint saved at cycle {} due to memory pressure", cycle);
+                    System.out.println("   Checkpoint saved: " + checkpointPath);
+                } catch (Exception e) {
+                    log.error("Failed emergency checkpoint at cycle {}: {}", cycle, e.getMessage());
+                }
+            }
+        }
+        
+        @Override
+        public void onMemoryPressure(long cycle, int heapUsagePercent) {
+            // Save emergency checkpoint if we have a path configured
+            if (checkpointPath != null && cycle > lastCheckpointCycle + 10_000) {
+                emergencyCheckpoint(cycle);
+            }
         }
         
         /**

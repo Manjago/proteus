@@ -159,7 +159,8 @@ java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
     --resume experiment.mv \
     --cycles 1000000 \
     --max-organisms 5000 \
-    --save final.mv
+    --save final.mv \
+    --checkpoint-interval 50000  # Сохранять каждые 50K циклов!
 
 # Шаг 5: Изучаем результат (с именами организмов!)
 java -jar proteus-*.jar checkpoint info final.mv

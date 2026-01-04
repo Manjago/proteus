@@ -38,6 +38,7 @@ proteus run [options]
 | `-m, --mutation-rate R` | Вероятность мутации (0.0-1.0) | 0.002 |
 | `--resume FILE` | Продолжить из checkpoint | - |
 | `--save FILE` | Сохранить checkpoint после run | - |
+| `--checkpoint-interval N` | **Auto-save каждые N циклов** (требует --save) | 0 (выкл) |
 | `--report-interval N` | Интервал отчёта (циклов) | 1000 |
 | `-q, --quiet` | Тихий режим (минимум вывода) | false |
 | `-f, --config FILE` | Конфигурационный файл (HOCON) | - |
@@ -60,12 +61,13 @@ proteus run --inject ancestor.asm --cycles 100000
 # С seed для воспроизводимости
 proteus run --inject ancestor.asm --cycles 100000 --seed 12345
 
-# Большая симуляция
+# Большая симуляция с auto-checkpoint (РЕКОМЕНДУЕТСЯ!)
 proteus run --inject ancestor.asm \
     --cycles 1000000 \
     --soup-size 1000000 \
     --max-organisms 5000 \
-    --save result.mv
+    --save result.mv \
+    --checkpoint-interval 50000  # Сохранять каждые 50K циклов
 
 # Продолжить из checkpoint
 proteus run --resume checkpoint.mv --cycles 50000 --save checkpoint.mv
