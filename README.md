@@ -155,7 +155,8 @@ java -Xmx512m -jar proteus-*.jar run \
     --debug initial_state.txt
 
 # Шаг 4: Запускаем "настоящую" симуляцию!
-java -Xmx1g -XX:+UseG1GC -jar proteus-*.jar run \
+# Для JDK 21+: ZGC Generational (минимальные паузы)
+java -Xmx2g -XX:+UseZGC -XX:+ZGenerational -jar proteus-*.jar run \
     --resume experiment.mv \
     --cycles 1000000 \
     --max-organisms 5000 \
@@ -177,6 +178,40 @@ java -jar proteus-*.jar run \
 - Имена организмов (Para, Chao, Anc) сохраняются в checkpoint!
 - Шаг 4: долгая симуляция с увеличенным heap и G1GC
 - Шаги 5-6: анализ результата
+
+### 🔧 JVM и GC настройки
+
+Для долгих симуляций (дни/недели) важны правильные настройки JVM:
+
+```bash
+# JDK 21+ (рекомендуется): ZGC Generational
+# Минимальные паузы GC, хороший throughput
+java -Xmx4g -XX:+UseZGC -XX:+ZGenerational -jar proteus-*.jar run ...
+
+# JDK 17-20: обычный ZGC
+java -Xmx4g -XX:+UseZGC -jar proteus-*.jar run ...
+
+# Универсальный вариант: G1GC (работает везде)
+java -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar proteus-*.jar run ...
+
+# Для экстремально долгих симуляций (неделя+):
+java -Xmx8g \
+    -XX:+UseZGC -XX:+ZGenerational \
+    -XX:SoftMaxHeapSize=6g \
+    -Xlog:gc*:file=gc.log:time,uptime:filecount=5,filesize=10m \
+    -jar proteus-*.jar run \
+    --resume experiment.mv \
+    --cycles 100000000 \
+    --max-organisms 10000 \
+    --save result.mv \
+    --checkpoint-interval 100000
+```
+
+**Рекомендации по памяти:**
+- 1M soup + 1K organisms → `-Xmx512m`
+- 1M soup + 5K organisms → `-Xmx2g`
+- 1M soup + 10K organisms → `-Xmx4g`
+- 10M soup + 10K organisms → `-Xmx8g`
 
 **Сравнение детерминизма:**
 ```bash

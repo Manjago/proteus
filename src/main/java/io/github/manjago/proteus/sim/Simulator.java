@@ -320,8 +320,37 @@ public class Simulator {
                         // Check again after GC
                         usedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
                         heapUsagePercent = (int) ((usedMem * 100) / maxMem);
+                        
                         if (heapUsagePercent > 90) {
-                            log.error("Critical heap usage after GC: {}% - OOM likely", heapUsagePercent);
+                            // Critical! Pause simulation to let GC work
+                            log.warn("Critical heap usage: {}% - pausing simulation for GC...", heapUsagePercent);
+                            
+                            // Multiple GC attempts with increasing pauses
+                            for (int attempt = 1; attempt <= 5 && heapUsagePercent > 85; attempt++) {
+                                int pauseSeconds = attempt * 2;  // 2, 4, 6, 8, 10 seconds
+                                log.info("GC pause attempt {}/5: waiting {} seconds...", attempt, pauseSeconds);
+                                
+                                try {
+                                    Thread.sleep(pauseSeconds * 1000L);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                                
+                                System.gc();
+                                
+                                // Recheck
+                                usedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+                                heapUsagePercent = (int) ((usedMem * 100) / maxMem);
+                                log.info("After GC attempt {}: heap at {}%", attempt, heapUsagePercent);
+                            }
+                            
+                            if (heapUsagePercent > 90) {
+                                log.error("Still critical after GC pauses: {}% - OOM likely, consider increasing -Xmx", 
+                                        heapUsagePercent);
+                            } else {
+                                log.info("GC pauses helped - heap now at {}%, resuming simulation", heapUsagePercent);
+                            }
                         }
                     }
                 }

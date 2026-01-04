@@ -120,7 +120,7 @@ public class RunCommand implements Callable<Integer> {
                         .maxOrganisms(maxOrganisms != null ? maxOrganisms : checkpointData.maxOrganisms())
                         .maxCycles(maxCycles != null ? maxCycles : 0)
                         .reportInterval(reportInterval != null ? reportInterval : 1000)
-                        .checkpointInterval(checkpointInterval != null ? checkpointInterval : 0)
+                        .checkpointInterval(checkpointInterval != null ? checkpointInterval.intValue() : 0)
                         .randomSeed(checkpointData.seed());
                 
                 SimulatorConfig configOverride = builder.build();
@@ -451,7 +451,7 @@ public class RunCommand implements Callable<Integer> {
         if (maxOrganisms != null) builder.maxOrganisms(maxOrganisms);
         if (maxCycles != null) builder.maxCycles(maxCycles);
         if (reportInterval != null) builder.reportInterval(reportInterval);
-        if (checkpointInterval != null) builder.checkpointInterval(checkpointInterval);
+        if (checkpointInterval != null) builder.checkpointInterval(checkpointInterval.intValue());
         
         return builder.build();
     }

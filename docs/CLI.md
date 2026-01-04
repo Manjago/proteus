@@ -225,6 +225,59 @@ proteus info
 
 ---
 
+## JVM и GC настройки
+
+Для долгих симуляций важны правильные настройки JVM.
+
+### Рекомендуемые GC
+
+| JDK версия | Рекомендуемый GC | Опции |
+|------------|------------------|-------|
+| JDK 21+ | ZGC Generational | `-XX:+UseZGC -XX:+ZGenerational` |
+| JDK 17-20 | ZGC | `-XX:+UseZGC` |
+| JDK 11-16 | G1GC | `-XX:+UseG1GC -XX:MaxGCPauseMillis=200` |
+
+### Примеры запуска
+
+```bash
+# Короткая симуляция (до 1M циклов)
+java -Xmx1g -jar proteus.jar run ...
+
+# Средняя симуляция (1-10M циклов)
+java -Xmx2g -XX:+UseZGC -XX:+ZGenerational -jar proteus.jar run ...
+
+# Долгая симуляция (неделя+)
+java -Xmx4g \
+    -XX:+UseZGC -XX:+ZGenerational \
+    -Xlog:gc*:file=gc.log:time:filecount=3,filesize=10m \
+    -jar proteus.jar run \
+    --checkpoint-interval 100000 \
+    ...
+```
+
+### Рекомендации по памяти
+
+| Soup size | Max organisms | Рекомендуемый -Xmx |
+|-----------|---------------|-------------------|
+| 100K | 1000 | 512m |
+| 1M | 1000 | 1g |
+| 1M | 5000 | 2g |
+| 1M | 10000 | 4g |
+| 10M | 10000 | 8g |
+
+### Поведение при нехватке памяти
+
+При heap usage > 85%:
+1. Сохраняется emergency checkpoint (если указан `--save`)
+2. Вызывается `System.gc()`
+
+При heap usage > 90%:
+1. Симуляция ставится на паузу
+2. Делается до 5 попыток GC с паузами 2-10 секунд
+3. Если не помогло — выводится warning в лог
+
+---
+
 ## Примеры использования
 
 ### Простой эксперимент
