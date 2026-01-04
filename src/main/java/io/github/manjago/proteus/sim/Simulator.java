@@ -249,36 +249,6 @@ public class Simulator {
     }
 
     /**
-     * Seed Adam (the first organism) into the soup.
-     */
-    public void seedAdam() {
-        int[] genome = Adam.genome();
-        
-        int addr = memoryManager.allocate(genome.length);
-        if (addr < 0) {
-            throw new IllegalStateException("Cannot allocate space for Adam");
-        }
-        
-        // Load genome into soup
-        for (int i = 0; i < genome.length; i++) {
-            soup.set(addr + i, genome[i]);
-        }
-        
-        // Get allocId for safe memory tracking
-        int allocId = memoryManager.getLastAllocId();
-        
-        Organism adam = new Organism(0, addr, genome.length, -1, 0, allocId);
-        totalOrganismsCreated++;
-        aliveOrganisms.add(adam);
-        reaper.register(adam);
-        aliveCount++;
-        maxAlive = Math.max(maxAlive, aliveCount);
-        
-        log.info("Adam seeded at address {} (size: {} instructions)", addr, genome.length);
-        listener.onSpawn(adam, null, totalCycles);
-    }
-    
-    /**
      * Run simulation for specified number of cycles.
      * Returns when cycles complete or stop is requested.
      * 

@@ -48,7 +48,7 @@ public class Defragmenter {
      * - Fragmentation > threshold AND
      * - Largest free block < minimum required size
      * 
-     * @param minRequiredSize minimum size needed for allocation (e.g., Adam.SIZE)
+     * @param minRequiredSize minimum size needed for allocation (e.g., 14 for ancestor)
      * @param fragmentationThreshold trigger when fragmentation exceeds this (0.0-1.0)
      * @return true if defragmentation should be performed
      */

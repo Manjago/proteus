@@ -1,7 +1,6 @@
 package io.github.manjago.proteus.cli;
 
 import io.github.manjago.proteus.config.SimulatorConfig;
-import io.github.manjago.proteus.core.Adam;
 import picocli.CommandLine.Command;
 
 import java.util.concurrent.Callable;
@@ -29,10 +28,21 @@ public class InfoCommand implements Callable<Integer> {
         System.out.println("Default Configuration:");
         System.out.println(SimulatorConfig.defaults());
         
-        System.out.println("Adam (first organism):");
-        System.out.println("  Size: " + Adam.genome().length + " instructions");
+        System.out.println("Quick Start:");
+        System.out.println("  # Run simulation with ancestor organism");
+        System.out.println("  java -jar proteus.jar run --inject examples/ancestor.asm --cycles 100000");
         System.out.println();
-        System.out.println(Adam.disassemble());
+        System.out.println("  # Debug mode (step-by-step)");
+        System.out.println("  java -jar proteus.jar debug --inject examples/ancestor.asm --cycles 40");
+        System.out.println();
+        System.out.println("  # Assemble custom organism");
+        System.out.println("  java -jar proteus.jar assemble myorg.asm -d");
+        System.out.println();
+        System.out.println("Example organisms in examples/:");
+        System.out.println("  ancestor.asm  - basic self-replicator");
+        System.out.println("  parasite.asm  - uses SEARCH to find and attack");
+        System.out.println("  chaotic.asm   - writes randomly with STORE");
+        System.out.println();
         
         return 0;
     }
