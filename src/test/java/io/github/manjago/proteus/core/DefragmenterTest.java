@@ -6,7 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicIntegerArray;
+
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,13 +17,13 @@ class DefragmenterTest {
     
     private static final int SOUP_SIZE = 1000;
     
-    private AtomicIntegerArray soup;
+    private int[] soup;
     private BitmapMemoryManager memoryManager;
     private Defragmenter defragmenter;
     
     @BeforeEach
     void setUp() {
-        soup = new AtomicIntegerArray(SOUP_SIZE);
+        soup = new int[SOUP_SIZE];
         memoryManager = new BitmapMemoryManager(SOUP_SIZE);
         defragmenter = new Defragmenter(soup, memoryManager);
     }
@@ -91,9 +91,9 @@ class DefragmenterTest {
         List<Organism> organisms = new ArrayList<>();
         
         // Write distinctive patterns to soup
-        for (int i = 0; i < 10; i++) soup.set(0 + i, 1000 + i);    // Org1 data
-        for (int i = 0; i < 10; i++) soup.set(100 + i, 2000 + i);  // Org2 data
-        for (int i = 0; i < 10; i++) soup.set(200 + i, 3000 + i);  // Org3 data
+        for (int i = 0; i < 10; i++) soup[0 + i] = 1000 + i;    // Org1 data
+        for (int i = 0; i < 10; i++) soup[100 + i] = 2000 + i;  // Org2 data
+        for (int i = 0; i < 10; i++) soup[200 + i] = 3000 + i;  // Org3 data
         
         Organism org1 = new Organism(0, 0, 10, -1, 0);
         Organism org2 = new Organism(1, 100, 10, 0, 100);
@@ -131,9 +131,9 @@ class DefragmenterTest {
         
         // Verify data was copied correctly
         for (int i = 0; i < 10; i++) {
-            assertEquals(1000 + i, soup.get(0 + i),  "Org1 data at offset " + i);
-            assertEquals(2000 + i, soup.get(10 + i), "Org2 data at offset " + i);
-            assertEquals(3000 + i, soup.get(20 + i), "Org3 data at offset " + i);
+            assertEquals(1000 + i, soup[0 + i],  "Org1 data at offset " + i);
+            assertEquals(2000 + i, soup[10 + i], "Org2 data at offset " + i);
+            assertEquals(3000 + i, soup[20 + i], "Org3 data at offset " + i);
         }
         
         // Only 2 organisms moved (org1 was already in place)
@@ -148,7 +148,7 @@ class DefragmenterTest {
     @DisplayName("defragment preserves relative IP correctly")
     void defragmentPreservesRelativeIp() {
         // Create organism at address 100 with IP pointing to instruction 5
-        for (int i = 0; i < 14; i++) soup.set(100 + i, 0xDEAD0000 + i);
+        for (int i = 0; i < 14; i++) soup[100 + i] = 0xDEAD0000 + i;
         
         Organism org = new Organism(0, 100, 14, -1, 0);
         org.getState().setIp(5);  // Relative IP = 5
@@ -169,7 +169,7 @@ class DefragmenterTest {
         
         // Verify genome was copied
         for (int i = 0; i < 14; i++) {
-            assertEquals(0xDEAD0000 + i, soup.get(i));
+            assertEquals(0xDEAD0000 + i, soup[i]);
         }
     }
     
@@ -183,7 +183,7 @@ class DefragmenterTest {
     @Test
     @DisplayName("defragment handles single organism already at start")
     void defragmentSingleOrganismAtStart() {
-        for (int i = 0; i < 10; i++) soup.set(i, 1000 + i);
+        for (int i = 0; i < 10; i++) soup[i] = 1000 + i;
         
         Organism org = new Organism(0, 0, 10, -1, 0);
         List<Organism> organisms = List.of(org);
@@ -225,7 +225,7 @@ class DefragmenterTest {
     @DisplayName("statistics track correctly")
     void statisticsTrack() {
         // Create fragmented setup
-        for (int i = 0; i < 10; i++) soup.set(100 + i, i);
+        for (int i = 0; i < 10; i++) soup[100 + i] = i;
         
         Organism org = new Organism(0, 100, 10, -1, 0);
         List<Organism> organisms = new ArrayList<>();

@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 
-import java.util.concurrent.atomic.AtomicIntegerArray;
+
 
 import static org.junit.jupiter.api.Assertions.*;
 import static io.github.manjago.proteus.core.OpCode.*;
@@ -15,13 +15,13 @@ class VirtualCPUTest {
     
     private VirtualCPU cpu;
     private CpuState state;
-    private AtomicIntegerArray memory;
+    private int[] memory;
     
     @BeforeEach
     void setUp() {
         cpu = new VirtualCPU(0.0); // No mutations for predictable tests
         state = new CpuState();
-        memory = new AtomicIntegerArray(1000);
+        memory = new int[1000];
     }
     
     // ========== Basic Instructions ==========
@@ -33,7 +33,7 @@ class VirtualCPUTest {
         @Test
         @DisplayName("NOP advances IP and does nothing else")
         void nopAdvancesIp() {
-            memory.set(0, encode(NOP));
+            memory[0] = encode(NOP);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -46,7 +46,7 @@ class VirtualCPUTest {
         @DisplayName("MOV copies register value")
         void movCopiesRegister() {
             state.setRegister(1, 42);
-            memory.set(0, encode(MOV, 0, 1)); // R0 = R1
+            memory[0] = encode(MOV, 0, 1); // R0 = R1
             
             cpu.execute(state, memory);
             
@@ -57,7 +57,7 @@ class VirtualCPUTest {
         @Test
         @DisplayName("MOVI loads immediate value into register")
         void moviLoadsImmediate() {
-            memory.set(0, encodeImm(MOVI, 4, 12345));
+            memory[0] = encodeImm(MOVI, 4, 12345);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -70,7 +70,7 @@ class VirtualCPUTest {
         @DisplayName("MOVI can load maximum 21-bit value")
         void moviLoadsMaxValue() {
             int maxValue = 0x1FFFFF; // 2,097,151
-            memory.set(0, encodeImm(MOVI, 0, maxValue));
+            memory[0] = encodeImm(MOVI, 0, maxValue);
             
             cpu.execute(state, memory);
             
@@ -89,7 +89,7 @@ class VirtualCPUTest {
         void addRegisters() {
             state.setRegister(0, 10);
             state.setRegister(1, 32);
-            memory.set(0, encode(ADD, 0, 1)); // R0 = R0 + R1
+            memory[0] = encode(ADD, 0, 1); // R0 = R0 + R1
             
             cpu.execute(state, memory);
             
@@ -101,7 +101,7 @@ class VirtualCPUTest {
         void subRegisters() {
             state.setRegister(0, 50);
             state.setRegister(1, 8);
-            memory.set(0, encode(SUB, 0, 1)); // R0 = R0 - R1
+            memory[0] = encode(SUB, 0, 1); // R0 = R0 - R1
             
             cpu.execute(state, memory);
             
@@ -112,7 +112,7 @@ class VirtualCPUTest {
         @DisplayName("INC increments register")
         void incRegister() {
             state.setRegister(0, 41);
-            memory.set(0, encode(INC, 0));
+            memory[0] = encode(INC, 0);
             
             cpu.execute(state, memory);
             
@@ -123,7 +123,7 @@ class VirtualCPUTest {
         @DisplayName("DEC decrements register")
         void decRegister() {
             state.setRegister(0, 43);
-            memory.set(0, encode(DEC, 0));
+            memory[0] = encode(DEC, 0);
             
             cpu.execute(state, memory);
             
@@ -134,7 +134,7 @@ class VirtualCPUTest {
         @DisplayName("Arithmetic handles overflow")
         void arithmeticOverflow() {
             state.setRegister(0, Integer.MAX_VALUE);
-            memory.set(0, encode(INC, 0));
+            memory[0] = encode(INC, 0);
             
             cpu.execute(state, memory);
             
@@ -151,9 +151,9 @@ class VirtualCPUTest {
         @Test
         @DisplayName("LOAD reads from memory")
         void loadFromMemory() {
-            memory.set(100, 42);
+            memory[100] = 42;
             state.setRegister(1, 100); // Address in R1
-            memory.set(0, encode(LOAD, 0, 1)); // R0 = memory[R1]
+            memory[0] = encode(LOAD, 0, 1); // R0 = memory[R1]
             
             cpu.execute(state, memory);
             
@@ -165,18 +165,18 @@ class VirtualCPUTest {
         void storeToMemory() {
             state.setRegister(0, 100); // Address in R0
             state.setRegister(1, 42);  // Value in R1
-            memory.set(0, encode(STORE, 0, 1)); // memory[R0] = R1
+            memory[0] = encode(STORE, 0, 1); // memory[R0] = R1
             
             cpu.execute(state, memory);
             
-            assertEquals(42, memory.get(100));
+            assertEquals(42, memory[100]);
         }
         
         @Test
         @DisplayName("LOAD with out-of-bounds address reports error")
         void loadOutOfBounds() {
             state.setRegister(1, 9999); // Invalid address
-            memory.set(0, encode(LOAD, 0, 1));
+            memory[0] = encode(LOAD, 0, 1);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -189,7 +189,7 @@ class VirtualCPUTest {
         @DisplayName("STORE with out-of-bounds address reports error")
         void storeOutOfBounds() {
             state.setRegister(0, -1); // Invalid address
-            memory.set(0, encode(STORE, 0, 1));
+            memory[0] = encode(STORE, 0, 1);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -208,7 +208,7 @@ class VirtualCPUTest {
         @DisplayName("JMP adds offset to IP (forward)")
         void jmpForward() {
             // JMP +5: at IP=0, execute, advance to IP=1, then add offset → IP=6
-            memory.set(0, encodeJump(5));
+            memory[0] = encodeJump(5);
             
             cpu.execute(state, memory);
             
@@ -219,7 +219,7 @@ class VirtualCPUTest {
         @DisplayName("JMP adds negative offset to IP (backward)")
         void jmpBackward() {
             state.setIp(10);
-            memory.set(10, encodeJump(-5));
+            memory[10] = encodeJump(-5);
             
             cpu.execute(state, memory);
             
@@ -230,7 +230,7 @@ class VirtualCPUTest {
         @DisplayName("JMP with offset 0 creates infinite loop")
         void jmpInfiniteLoop() {
             state.setIp(5);
-            memory.set(5, encodeJump(-1));  // Jump to self: 5 + 1 + (-1) = 5
+            memory[5] = encodeJump(-1);  // Jump to self: 5 + 1 + (-1) = 5
             
             cpu.execute(state, memory);
             
@@ -241,7 +241,7 @@ class VirtualCPUTest {
         @DisplayName("JMPZ jumps when register is zero")
         void jmpzJumpsOnZero() {
             state.setRegister(0, 0);   // Condition = 0
-            memory.set(0, encodeJumpZero(0, 10));  // Jump +10 if R0 == 0
+            memory[0] = encodeJumpZero(0, 10);  // Jump +10 if R0 == 0
             
             cpu.execute(state, memory);
             
@@ -252,7 +252,7 @@ class VirtualCPUTest {
         @DisplayName("JMPZ does not jump when register is non-zero")
         void jmpzNoJumpOnNonZero() {
             state.setRegister(0, 5);   // Condition != 0
-            memory.set(0, encodeJumpZero(0, 10));
+            memory[0] = encodeJumpZero(0, 10);
             
             cpu.execute(state, memory);
             
@@ -264,7 +264,7 @@ class VirtualCPUTest {
         void jmpnJumpsWhenLess() {
             state.setRegister(0, 3);   // R_a = 3
             state.setRegister(1, 10);  // R_b = 10
-            memory.set(0, encodeJumpLess(0, 1, 5));  // Jump +5 if R0 < R1
+            memory[0] = encodeJumpLess(0, 1, 5);  // Jump +5 if R0 < R1
             
             cpu.execute(state, memory);
             
@@ -276,7 +276,7 @@ class VirtualCPUTest {
         void jmpnNoJumpWhenGreaterOrEqual() {
             state.setRegister(0, 10);  // R_a = 10
             state.setRegister(1, 5);   // R_b = 5
-            memory.set(0, encodeJumpLess(0, 1, 100));
+            memory[0] = encodeJumpLess(0, 1, 100);
             
             cpu.execute(state, memory);
             
@@ -288,7 +288,7 @@ class VirtualCPUTest {
         void jmpnNoJumpWhenEqual() {
             state.setRegister(0, 7);  // R_a = 7
             state.setRegister(1, 7);  // R_b = 7
-            memory.set(0, encodeJumpLess(0, 1, 100));
+            memory[0] = encodeJumpLess(0, 1, 100);
             
             cpu.execute(state, memory);
             
@@ -301,7 +301,7 @@ class VirtualCPUTest {
             state.setRegister(0, 0);   // R_a = 0
             state.setRegister(4, 10);  // R_b = 10
             state.setIp(8);
-            memory.set(8, encodeJumpLess(0, 4, -5));  // Jump -5 if R0 < R4
+            memory[8] = encodeJumpLess(0, 4, -5);  // Jump -5 if R0 < R4
             
             cpu.execute(state, memory);
             
@@ -318,14 +318,14 @@ class VirtualCPUTest {
         @Test
         @DisplayName("COPY copies memory cell without mutation when rate is 0")
         void copyWithoutMutation() {
-            memory.set(100, 0xDEADBEEF);
+            memory[100] = 0xDEADBEEF;
             state.setRegister(0, 100); // Source
             state.setRegister(1, 200); // Destination
-            memory.set(0, encode(COPY, 0, 1));
+            memory[0] = encode(COPY, 0, 1);
             
             cpu.execute(state, memory);
             
-            assertEquals(0xDEADBEEF, memory.get(200));
+            assertEquals(0xDEADBEEF, memory[200]);
         }
         
         @Test
@@ -333,15 +333,15 @@ class VirtualCPUTest {
         void copyWithMutation() {
             VirtualCPU mutatingCpu = new VirtualCPU(1.0, new GameRng(42), SystemCallHandler.FAILING);
             
-            memory.set(100, 0xDEADBEEF);
+            memory[100] = 0xDEADBEEF;
             state.setRegister(0, 100); // Source
             state.setRegister(1, 200); // Destination
-            memory.set(0, encode(COPY, 0, 1));
+            memory[0] = encode(COPY, 0, 1);
             
             mutatingCpu.execute(state, memory);
             
             // Value should be different (one bit flipped)
-            int copied = memory.get(200);
+            int copied = memory[200];
             assertNotEquals(0xDEADBEEF, copied);
             
             // Should differ by exactly one bit
@@ -354,7 +354,7 @@ class VirtualCPUTest {
         void copyInvalidSource() {
             state.setRegister(0, -1);  // Invalid source
             state.setRegister(1, 200); // Valid destination
-            memory.set(0, encode(COPY, 0, 1));
+            memory[0] = encode(COPY, 0, 1);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -377,19 +377,19 @@ class VirtualCPUTest {
             int marker3 = encode(INC, 3);
             
             // Place pattern at address 500
-            memory.set(500, marker1);
-            memory.set(501, marker2);
-            memory.set(502, marker3);
+            memory[500] = marker1;
+            memory[501] = marker2;
+            memory[502] = marker3;
             
             // Template at address 100
-            memory.set(100, marker1);
-            memory.set(101, marker2);
-            memory.set(102, marker3);
+            memory[100] = marker1;
+            memory[101] = marker2;
+            memory[102] = marker3;
             
             state.setRegister(0, 200); // Search from 200 (skip template at 100)
             state.setRegister(1, 100); // Template address
             state.setRegister(2, 3);   // Template length
-            memory.set(0, encode(SEARCH, 0, 1, 2, 3)); // Result in R3
+            memory[0] = encode(SEARCH, 0, 1, 2, 3); // Result in R3
             
             cpu.execute(state, memory);
             
@@ -401,13 +401,13 @@ class VirtualCPUTest {
         @DisplayName("SEARCH returns -1 when pattern not found")
         void searchNotFound() {
             // Template at address 100
-            memory.set(100, 0x12345678);
-            memory.set(101, 0x9ABCDEF0);
+            memory[100] = 0x12345678;
+            memory[101] = 0x9ABCDEF0;
             
             state.setRegister(0, 200); // Search from 200
             state.setRegister(1, 100); // Template address
             state.setRegister(2, 2);   // Template length
-            memory.set(0, encode(SEARCH, 0, 1, 2, 3));
+            memory[0] = encode(SEARCH, 0, 1, 2, 3);
             
             cpu.execute(state, memory);
             
@@ -420,7 +420,7 @@ class VirtualCPUTest {
             state.setRegister(0, 0);
             state.setRegister(1, -1);  // Invalid template address
             state.setRegister(2, 3);
-            memory.set(0, encode(SEARCH, 0, 1, 2, 3));
+            memory[0] = encode(SEARCH, 0, 1, 2, 3);
             
             cpu.execute(state, memory);
             
@@ -438,7 +438,7 @@ class VirtualCPUTest {
         @DisplayName("ALLOCATE with failing handler returns -1")
         void allocateFails() {
             state.setRegister(0, 50); // Request 50 cells
-            memory.set(0, encode(ALLOCATE, 0, 1)); // Result in R1
+            memory[0] = encode(ALLOCATE, 0, 1); // Result in R1
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -464,7 +464,7 @@ class VirtualCPUTest {
             VirtualCPU cpuWithHandler = new VirtualCPU(0.0, new GameRng(42), handler);
             
             state.setRegister(0, 50);
-            memory.set(0, encode(ALLOCATE, 0, 1));
+            memory[0] = encode(ALLOCATE, 0, 1);
             
             ExecutionResult result = cpuWithHandler.execute(state, memory);
             
@@ -477,7 +477,7 @@ class VirtualCPUTest {
         void spawnFails() {
             state.setRegister(0, 100); // Address
             state.setRegister(1, 50);  // Size
-            memory.set(0, encode(SPAWN, 0, 1));
+            memory[0] = encode(SPAWN, 0, 1);
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -505,7 +505,7 @@ class VirtualCPUTest {
         @Test
         @DisplayName("Unknown opcode reports error and advances IP")
         void unknownOpcode() {
-            memory.set(0, 0xFF_000000); // Invalid opcode 0xFF
+            memory[0] = 0xFF_000000; // Invalid opcode 0xFF
             
             ExecutionResult result = cpu.execute(state, memory);
             
@@ -531,9 +531,9 @@ class VirtualCPUTest {
             state.setRegister(1, 0);
             
             // Loop: DEC R0, then JLT R1, R0, -2 (jump if 0 < R0, i.e., R0 > 0)
-            memory.set(0, encode(DEC, 0));            // R0--
-            memory.set(1, encodeJumpLess(1, 0, -2));  // if R1(0) < R0, jump -2 → addr 0
-            memory.set(2, encode(NOP));               // End
+            memory[0] = encode(DEC, 0);            // R0--
+            memory[1] = encodeJumpLess(1, 0, -2);  // if R1(0) < R0, jump -2 → addr 0
+            memory[2] = encode(NOP);               // End
             
             // Execute until program exits loop (IP reaches NOP at address 2)
             int maxCycles = 100;
@@ -554,7 +554,7 @@ class VirtualCPUTest {
             
             // Source data at 100-104
             for (int i = 0; i < 5; i++) {
-                memory.set(100 + i, 1000 + i);
+                memory[100 + i] = 1000 + i;
             }
             
             // R0 = source offset (100) - relative to startAddr (0)
@@ -569,12 +569,12 @@ class VirtualCPUTest {
             
             // Copy loop using LOAD/STORE (relative to startAddr=0)
             // Loop at addresses 0-5:
-            memory.set(0, encode(LOAD, 4, 0));        // R4 = memory[startAddr + R0]
-            memory.set(1, encode(STORE, 1, 4));       // memory[startAddr + R1] = R4
-            memory.set(2, encode(INC, 0));            // R0++ (source offset)
-            memory.set(3, encode(INC, 1));            // R1++ (dest offset)
-            memory.set(4, encode(INC, 2));            // R2++ (counter)
-            memory.set(5, encodeJumpLess(2, 3, -6));  // if R2 < R3, jump -6 → addr 0
+            memory[0] = encode(LOAD, 4, 0);        // R4 = memory[startAddr + R0]
+            memory[1] = encode(STORE, 1, 4);       // memory[startAddr + R1] = R4
+            memory[2] = encode(INC, 0);            // R0++ (source offset)
+            memory[3] = encode(INC, 1);            // R1++ (dest offset)
+            memory[4] = encode(INC, 2);            // R2++ (counter)
+            memory[5] = encodeJumpLess(2, 3, -6);  // if R2 < R3, jump -6 → addr 0
             
             // Execute loop
             int maxCycles = 100;
@@ -584,7 +584,7 @@ class VirtualCPUTest {
             
             // Verify copy
             for (int i = 0; i < 5; i++) {
-                assertEquals(1000 + i, memory.get(200 + i));
+                assertEquals(1000 + i, memory[200 + i]);
             }
         }
         
@@ -595,7 +595,7 @@ class VirtualCPUTest {
             state = new CpuState(startAddr);
             
             // Place GETADDR R3 at address 50
-            memory.set(startAddr, encode(GETADDR, 3));
+            memory[startAddr] = encode(GETADDR, 3);
             
             cpu.execute(state, memory);
             
@@ -610,11 +610,11 @@ class VirtualCPUTest {
             state = new CpuState(startAddr);
             
             // Put value at startAddr + 10 = 110
-            memory.set(110, 42);
+            memory[110] = 42;
             
             // LOAD from offset 10 (which is startAddr + 10 = 110)
             state.setRegister(1, 10);  // offset
-            memory.set(startAddr, encode(LOAD, 0, 1));  // R0 = memory[startAddr + R1]
+            memory[startAddr] = encode(LOAD, 0, 1);  // R0 = memory[startAddr + R1]
             
             cpu.execute(state, memory);
             
