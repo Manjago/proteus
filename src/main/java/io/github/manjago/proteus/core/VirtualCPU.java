@@ -3,8 +3,6 @@ package io.github.manjago.proteus.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.atomic.AtomicIntegerArray;
-
 import static io.github.manjago.proteus.core.OpCode.*;
 
 /**
@@ -12,6 +10,8 @@ import static io.github.manjago.proteus.core.OpCode.*;
  * 
  * Executes instructions from shared memory ("soup").
  * Each organism has its own CpuState but shares the memory.
+ * 
+ * <p><b>Threading:</b> Single-threaded by design for determinism.
  * 
  * <h2>v1.2 Changes:</h2>
  * <ul>
@@ -65,20 +65,20 @@ public final class VirtualCPU {
      * Execute a single instruction (ISA v1.2).
      * 
      * @param state CPU state of the organism
-     * @param memory shared memory ("soup")
+     * @param memory shared memory ("soup") - plain array for performance
      * @return execution result
      */
-    public ExecutionResult execute(CpuState state, AtomicIntegerArray memory) {
+    public ExecutionResult execute(CpuState state, int[] memory) {
         // v1.2: Use absolute IP for memory access
         int absoluteIp = state.getAbsoluteIp();
         
         // Bounds check for IP
-        if (absoluteIp < 0 || absoluteIp >= memory.length()) {
+        if (absoluteIp < 0 || absoluteIp >= memory.length) {
             state.incrementErrors();
             return ExecutionResult.ERROR_IP_OUT_OF_BOUNDS;
         }
         
-        int instruction = memory.get(absoluteIp);
+        int instruction = memory[absoluteIp];
         OpCode op = decodeOpCode(instruction);
         
         if (op == null) {
@@ -100,7 +100,7 @@ public final class VirtualCPU {
     }
     
     private ExecutionResult executeOp(OpCode op, int instruction, int r1, int r2, int r3, int r4,
-                                       CpuState state, AtomicIntegerArray memory) {
+                                       CpuState state, int[] memory) {
         switch (op) {
             case NOP -> {
                 state.advanceIp();
@@ -159,12 +159,12 @@ public final class VirtualCPU {
             case LOAD -> {
                 int offset = state.getRegister(r2);
                 int addr = state.getStartAddr() + offset;  // v1.2: relative!
-                if (addr < 0 || addr >= memory.length()) {
+                if (addr < 0 || addr >= memory.length) {
                     state.incrementErrors();
                     state.advanceIp();
                     return ExecutionResult.ERROR_MEMORY_OUT_OF_BOUNDS;
                 }
-                state.setRegister(r1, memory.get(addr));
+                state.setRegister(r1, memory[addr]);
                 state.advanceIp();
                 return ExecutionResult.OK;
             }
@@ -173,12 +173,12 @@ public final class VirtualCPU {
             case STORE -> {
                 int offset = state.getRegister(r1);
                 int addr = state.getStartAddr() + offset;  // v1.2: relative!
-                if (addr < 0 || addr >= memory.length()) {
+                if (addr < 0 || addr >= memory.length) {
                     state.incrementErrors();
                     state.advanceIp();
                     return ExecutionResult.ERROR_MEMORY_OUT_OF_BOUNDS;
                 }
-                memory.set(addr, state.getRegister(r2));
+                memory[addr] = state.getRegister(r2);
                 state.advanceIp();
                 return ExecutionResult.OK;
             }
@@ -246,19 +246,19 @@ public final class VirtualCPU {
      * COPY instruction - copies one memory cell with possible mutation.
      * memory[R_dst] = memory[R_src] (possibly mutated)
      */
-    private ExecutionResult executeCopy(int r1, int r2, CpuState state, AtomicIntegerArray memory) {
+    private ExecutionResult executeCopy(int r1, int r2, CpuState state, int[] memory) {
         int srcAddr = state.getRegister(r1);
         int dstAddr = state.getRegister(r2);
         
         // Bounds check
-        if (srcAddr < 0 || srcAddr >= memory.length() ||
-            dstAddr < 0 || dstAddr >= memory.length()) {
+        if (srcAddr < 0 || srcAddr >= memory.length ||
+            dstAddr < 0 || dstAddr >= memory.length) {
             state.incrementErrors();
             state.advanceIp();
             return ExecutionResult.ERROR_MEMORY_OUT_OF_BOUNDS;
         }
         
-        int originalValue = memory.get(srcAddr);
+        int originalValue = memory[srcAddr];
         int value = originalValue;
         
         // MUTATION happens here!
@@ -272,7 +272,7 @@ public final class VirtualCPU {
             }
         }
         
-        memory.set(dstAddr, value);
+        memory[dstAddr] = value;
         state.advanceIp();
         return ExecutionResult.OK;
     }
@@ -351,7 +351,7 @@ public final class VirtualCPU {
      * Rf (r4) = result (found address, or -1 if not found)
      */
     private ExecutionResult executeSearch(int r1, int r2, int r3, int r4,
-                                          CpuState state, AtomicIntegerArray memory) {
+                                          CpuState state, int[] memory) {
         int searchStart = state.getRegister(r1);
         int templateAddr = state.getRegister(r2);
         int templateLen = state.getRegister(r3);
@@ -366,7 +366,7 @@ public final class VirtualCPU {
         }
         
         // Validate template bounds
-        if (templateAddr < 0 || templateAddr + templateLen > memory.length()) {
+        if (templateAddr < 0 || templateAddr + templateLen > memory.length) {
             state.setRegister(r4, -1);
             state.advanceIp();
             return ExecutionResult.OK;
@@ -380,11 +380,11 @@ public final class VirtualCPU {
         // Read template into local array for comparison
         int[] template = new int[templateLen];
         for (int i = 0; i < templateLen; i++) {
-            template[i] = memory.get(templateAddr + i);
+            template[i] = memory[templateAddr + i];
         }
         
         // Search forward from searchStart
-        int maxSearchAddr = memory.length() - templateLen;
+        int maxSearchAddr = memory.length - templateLen;
         for (int addr = searchStart; addr <= maxSearchAddr; addr++) {
             if (matchesTemplate(memory, addr, template)) {
                 state.setRegister(r4, addr);
@@ -399,9 +399,9 @@ public final class VirtualCPU {
         return ExecutionResult.OK;
     }
     
-    private boolean matchesTemplate(AtomicIntegerArray memory, int startAddr, int[] template) {
+    private boolean matchesTemplate(int[] memory, int startAddr, int[] template) {
         for (int i = 0; i < template.length; i++) {
-            if (memory.get(startAddr + i) != template[i]) {
+            if (memory[startAddr + i] != template[i]) {
                 return false;
             }
         }

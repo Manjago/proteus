@@ -63,8 +63,9 @@
 │    └─────────────┘    └─────────────┘    └─────────────┘    │
 │                                                             │
 ├─────────────────────────────────────────────────────────────┤
-│                     AtomicIntegerArray                      │
-│                    "Soup" (10K-1M cells)                    │
+│                        int[] soup                           │
+│           "Soup" (10K-1M cells, plain array)                │
+│              Single-threaded for determinism                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -106,6 +107,8 @@
 | `ProteusCli` | Главная точка входа (picocli) |
 | `RunCommand` | Команда `run` — запуск симуляции (+ --resume, --save) |
 | `DebugCommand` | Команда `debug` — покадровый просмотр (+ --resume, --save) |
+| `CheckpointCommand` | Команда `checkpoint` — работа с checkpoint файлами |
+| `AssembleCommand` | Команда `assemble` — ассемблирование .asm файлов |
 | `DisassembleCommand` | Команда `disassemble` — дизассемблирование |
 | `AncestorCommand` | Команда `ancestor` — показать геном Adam |
 | `InfoCommand` | Команда `info` — информация о системе |
@@ -191,11 +194,11 @@
 ```java
 // VirtualCPU.java
 case COPY -> {
-    int value = memory.get(srcAddr);
+    int value = memory[srcAddr];
     if (random.nextDouble() < mutationRate) {
         value = mutate(value);  // ← Единственное место мутаций!
     }
-    memory.set(dstAddr, value);
+    memory[dstAddr] = value;
 }
 ```
 
@@ -360,6 +363,30 @@ int id = totalOrganismsCreated;
 - `aliveOrganisms` — только живые (max 5,000)
 - Reaper queue — живые + мёртвые (периодически чистится)
 - `MutationTracker` — все мутации (~100K записей ≈ 5MB)
+
+### 4.8. Однопоточность для детерминизма ✅
+
+**Решение:** Вся симуляция выполняется в одном потоке. Soup — обычный `int[]`, не `AtomicIntegerArray`.
+
+**Почему:**
+- **Детерминизм** — при одинаковом seed получаем идентичные результаты
+- **Простота** — нет race conditions, проще отлаживать
+- **Checkpoint** — состояние RNG восстанавливается точно
+- **Производительность** — нет overhead'а на синхронизацию (~6x быстрее)
+
+```java
+// Simulator.java
+private final int[] soup;  // Plain array, NOT AtomicIntegerArray
+
+public Simulator(SimulatorConfig config) {
+    this.soup = new int[config.soupSize()];  // ~4MB for 1M cells
+    // ...
+}
+```
+
+**Потоки в системе:**
+- `main` — вся логика симуляции (один цикл = один поток)
+- UI/CLI — только отображение, не модифицирует soup
 
 ---
 
@@ -861,6 +888,27 @@ proteus debug --resume state.mv --cycles 100 --from 50
 - allocId организмов и memory manager синхронизированы
 - nextAllocationId сохраняется для корректных новых аллокаций
 - Симуляция продолжается детерминированно!
+
+**Подкоманды checkpoint:**
+
+```bash
+# Информация о checkpoint с анализом популяции
+proteus checkpoint info state.mv
+
+# Сравнение двух checkpoint (для проверки детерминизма)
+proteus checkpoint diff state1.mv state2.mv
+
+# Дизассемблер организма по ID
+proteus checkpoint dump state.mv 12345
+proteus checkpoint dump state.mv 12345 -r -c  # raw codes + context
+```
+
+**Анализ популяции (`checkpoint info`):**
+- `[R]` Reproductive — может размножаться (ALLOCATE + COPY + SPAWN)
+- `[Z]` Zombie — IP вышел за пределы кода
+- `[L]` Looping — есть JMP с отрицательным offset
+- `[P]` Pending — готовит потомка
+- `[E]` Erroring — много ошибок (>50% от max)
 
 #### 5.5. Memory Dump & Map API (multiplayer)
 - [ ] **MemoryDump** — снимок soup + ownership по запросу игрока

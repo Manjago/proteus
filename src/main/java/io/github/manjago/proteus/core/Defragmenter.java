@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
  * Memory defragmenter for the soup.
@@ -14,6 +13,8 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
  * eliminating fragmentation. This is safe with ISA v1.2's
  * position-independent code - organisms continue executing
  * correctly after being moved.
+ * 
+ * <p><b>Threading:</b> Single-threaded by design for determinism.
  * 
  * Works exclusively with BitmapMemoryManager for guaranteed
  * memory accounting correctness.
@@ -28,7 +29,7 @@ public class Defragmenter {
     
     private static final Logger log = LoggerFactory.getLogger(Defragmenter.class);
     
-    private final AtomicIntegerArray soup;
+    private final int[] soup;
     private final BitmapMemoryManager memoryManager;
     
     // Statistics
@@ -36,7 +37,7 @@ public class Defragmenter {
     private int totalMoved = 0;
     private long totalBytesCompacted = 0;
     
-    public Defragmenter(AtomicIntegerArray soup, BitmapMemoryManager memoryManager) {
+    public Defragmenter(int[] soup, BitmapMemoryManager memoryManager) {
         this.soup = soup;
         this.memoryManager = memoryManager;
     }
@@ -156,8 +157,8 @@ public class Defragmenter {
         // Copy genome to new location
         // Note: we copy forward (low to high) since newAddr < oldAddr during compaction
         for (int i = 0; i < size; i++) {
-            int instruction = soup.get(oldAddr + i);
-            soup.set(newAddr + i, instruction);
+            int instruction = soup[oldAddr + i];
+            soup[newAddr + i] = instruction;
         }
         
         // Update organism's address (this also updates CpuState.startAddr)

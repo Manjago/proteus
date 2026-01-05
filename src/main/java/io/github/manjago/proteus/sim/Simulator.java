@@ -10,13 +10,15 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
  * Main simulation engine for Proteus artificial life.
  * 
  * Manages the "soup" (memory), organisms, CPU execution, and lifecycle events.
  * Can be started, paused, and resumed. Supports graceful shutdown.
+ * 
+ * <p><b>Threading:</b> Single-threaded by design for determinism. 
+ * All simulation logic runs on one thread.
  */
 public class Simulator {
     
@@ -24,8 +26,8 @@ public class Simulator {
     
     private final SimulatorConfig config;
     
-    // The "soup" - shared memory
-    private final AtomicIntegerArray soup;
+    // The "soup" - shared memory (plain array, single-threaded for determinism)
+    private final int[] soup;
     
     // Core components
     private final BitmapMemoryManager memoryManager;
@@ -66,7 +68,7 @@ public class Simulator {
         this.config = config;
         this.actualSeed = config.effectiveSeed();
         this.gameRng = new GameRng(actualSeed);
-        this.soup = new AtomicIntegerArray(config.soupSize());
+        this.soup = new int[config.soupSize()];
         this.memoryManager = new BitmapMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
@@ -84,7 +86,7 @@ public class Simulator {
         this.config = config;
         this.actualSeed = rng.getInitialSeed();
         this.gameRng = rng;
-        this.soup = new AtomicIntegerArray(config.soupSize());
+        this.soup = new int[config.soupSize()];
         this.memoryManager = new BitmapMemoryManager(config.soupSize());
         this.reaper = new AgeBasedReaper(memoryManager);
         this.mutationTracker = new MutationTracker();
@@ -213,7 +215,7 @@ public class Simulator {
         
         // Load genome into soup
         for (int i = 0; i < genome.length; i++) {
-            soup.set(addr + i, genome[i]);
+            soup[addr + i] = genome[i];
         }
         
         // Create organism
@@ -303,10 +305,15 @@ public class Simulator {
                         reaper.cleanup();
                     }
                     
-                    // DIAGNOSTIC: Check for organism overlaps periodically
-                    int overlaps = checkForOverlaps();
-                    if (overlaps > 0) {
-                        log.error("OVERLAP DETECTED at cycle {}: {} overlapping organisms!", totalCycles, overlaps);
+                    // DIAGNOSTIC: Check for organism overlaps periodically (debug only)
+                    // Note: Disabled by default because it's O(n²). Enable for debugging:
+                    // - Pre-spawn check catches overlaps before they happen
+                    // - OWNERSHIP_MISMATCH check catches memory corruption
+                    if (log.isTraceEnabled()) {
+                        int overlaps = checkForOverlaps();
+                        if (overlaps > 0) {
+                            log.error("OVERLAP DETECTED at cycle {}: {} overlapping organisms!", totalCycles, overlaps);
+                        }
                     }
                     
                     // Memory pressure check - trigger GC if heap is getting full
@@ -836,7 +843,7 @@ public class Simulator {
     public MemoryManager getMemoryManager() { return memoryManager; }
     public Reaper getReaper() { return reaper; }
     public MutationTracker getMutationTracker() { return mutationTracker; }
-    public AtomicIntegerArray getSoup() { return soup; }
+    public int[] getSoup() { return soup; }
     
     /**
      * Calculate expected memory usage (for leak detection).

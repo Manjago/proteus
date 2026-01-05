@@ -206,8 +206,8 @@ public class CheckpointStore {
         
         // Restore soup
         var soup = sim.getSoup();
-        for (int i = 0; i < data.soup().length && i < soup.length(); i++) {
-            soup.set(i, data.soup()[i]);
+        for (int i = 0; i < data.soup().length && i < soup.length; i++) {
+            soup[i] = data.soup()[i];
         }
         
         // Restore memory manager state with exact allocIds
@@ -300,7 +300,7 @@ public class CheckpointStore {
         List<Integer> regionData = new ArrayList<>();
         
         for (int i = 0; i < soupSize; i++) {
-            int value = soup.get(i);
+            int value = soup[i];
             if (value != 0) {
                 if (regionStart == -1) {
                     regionStart = i;
