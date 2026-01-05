@@ -142,11 +142,38 @@ proteus checkpoint diff FILE1 FILE2
 - Организмах
 - RNG state
 
+#### checkpoint dump
+
+Дизассемблировать код организма по ID:
+
+```bash
+proteus checkpoint dump FILE ORGANISM_ID [options]
+```
+
+**Опции:**
+
+| Опция | Описание |
+|-------|----------|
+| `-r, --raw` | Показать сырые коды инструкций |
+| `-c, --context` | Показать память вокруг организма |
+
+**Вывод включает:**
+- Информация об организме (ID, имя, адрес, размер, возраст)
+- Состояние регистров (R0-R7)
+- Pending allocation (если есть)
+- Дизассемблированный код с отметкой текущего IP
+
 ### Примеры
 
 ```bash
 # Информация о checkpoint
 proteus checkpoint info experiment.mv
+
+# Дизассемблировать организм #45865659
+proteus checkpoint dump final.mv 45865659
+
+# С сырыми кодами и контекстом памяти
+proteus checkpoint dump final.mv 45865659 -r -c
 
 # Проверка детерминизма
 proteus run --resume base.mv --cycles 1000 --save run1.mv

@@ -1,9 +1,11 @@
 package io.github.manjago.proteus.cli;
 
+import io.github.manjago.proteus.core.Disassembler;
 import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.persistence.CheckpointStore.CheckpointData;
 import io.github.manjago.proteus.persistence.CheckpointStore.OrganismData;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
@@ -25,7 +27,8 @@ import java.util.concurrent.Callable;
     mixinStandardHelpOptions = true,
     subcommands = {
         CheckpointCommand.InfoCommand.class,
-        CheckpointCommand.DiffCommand.class
+        CheckpointCommand.DiffCommand.class,
+        CheckpointCommand.DumpCommand.class
     }
 )
 public class CheckpointCommand implements Callable<Integer> {
@@ -316,6 +319,178 @@ public class CheckpointCommand implements Callable<Integer> {
                 if (!map1.containsKey(id)) {
                     diffs.add(String.format("organism #%d: exists in file2 but not file1", id));
                 }
+            }
+        }
+    }
+    
+    // ========== Subcommand: dump ==========
+    
+    @Command(
+        name = "dump",
+        description = "Disassemble organism code from checkpoint",
+        mixinStandardHelpOptions = true
+    )
+    public static class DumpCommand implements Callable<Integer> {
+        
+        @Parameters(index = "0", description = "Checkpoint file (.mv)")
+        private Path checkpointFile;
+        
+        @Parameters(index = "1", description = "Organism ID to disassemble")
+        private int organismId;
+        
+        @Option(names = {"-r", "--raw"}, description = "Show raw instruction codes")
+        private boolean showRaw;
+        
+        @Option(names = {"-c", "--context"}, description = "Show memory context around organism")
+        private boolean showContext;
+        
+        @Override
+        public Integer call() {
+            try {
+                CheckpointData data = CheckpointStore.load(checkpointFile);
+                
+                // Find organism by ID
+                OrganismData target = null;
+                for (OrganismData org : data.organisms()) {
+                    if (org.id == organismId) {
+                        target = org;
+                        break;
+                    }
+                }
+                
+                if (target == null) {
+                    System.err.println("❌ Organism #" + organismId + " not found in checkpoint");
+                    System.err.println();
+                    System.err.println("Available organisms:");
+                    int count = 0;
+                    for (OrganismData org : data.organisms()) {
+                        if (count++ < 20) {
+                            String nameDisplay = org.name != null ? org.name + "#" + org.id : "#" + org.id;
+                            System.err.printf("   %s @ [%d..%d) size=%d%n",
+                                    nameDisplay, org.startAddr, org.startAddr + org.size, org.size);
+                        }
+                    }
+                    if (data.organisms().size() > 20) {
+                        System.err.printf("   ... and %d more%n", data.organisms().size() - 20);
+                    }
+                    return 1;
+                }
+                
+                // Print organism info
+                String nameDisplay = target.name != null ? target.name + "#" + target.id : "#" + target.id;
+                System.out.println("═".repeat(60));
+                System.out.println("ORGANISM DUMP: " + nameDisplay);
+                System.out.println("═".repeat(60));
+                System.out.println();
+                
+                System.out.println("📋 Info:");
+                System.out.printf("   ID:       %d%n", target.id);
+                if (target.name != null) {
+                    System.out.printf("   Name:     %s%n", target.name);
+                }
+                System.out.printf("   Address:  [%d..%d)%n", target.startAddr, target.startAddr + target.size);
+                System.out.printf("   Size:     %d instructions%n", target.size);
+                System.out.printf("   Parent:   #%d%n", target.parentId);
+                System.out.printf("   Birth:    cycle %d%n", target.birthCycle);
+                System.out.printf("   Age:      %d cycles%n", target.age);
+                System.out.printf("   IP:       %d (relative), %d (absolute in soup)%n", 
+                        target.ip, target.startAddr + target.ip);
+                System.out.printf("   Errors:   %d%n", target.errors);
+                System.out.printf("   AllocId:  %d%n", target.allocId);
+                System.out.println();
+                
+                // Print registers
+                System.out.println("📊 Registers:");
+                for (int i = 0; i < 8; i++) {
+                    System.out.printf("   R%d = %d%n", i, target.registers[i]);
+                }
+                System.out.println();
+                
+                // Print pending allocation if any
+                if (target.hasPending) {
+                    System.out.println("⏳ Pending allocation:");
+                    System.out.printf("   Address:  [%d..%d)%n", target.pendingAddr, target.pendingAddr + target.pendingSize);
+                    System.out.printf("   Size:     %d%n", target.pendingSize);
+                    System.out.printf("   AllocId:  %d%n", target.pendingAllocId);
+                    System.out.println();
+                }
+                
+                // Disassemble code
+                System.out.println("🧬 Code:");
+                int[] soup = data.soup();
+                int relativeIp = target.ip;  // IP is already relative in v1.2
+                int absoluteIp = target.startAddr + target.ip;
+                
+                // Check if IP is within organism bounds
+                boolean ipInBounds = relativeIp >= 0 && relativeIp < target.size;
+                if (!ipInBounds) {
+                    System.out.printf("   ⚠️  IP out of bounds! Relative IP=%d, Absolute IP=%d%n", 
+                            relativeIp, absoluteIp);
+                    System.out.printf("   ℹ️  Organism executed %d instructions beyond its code%n", 
+                            relativeIp - target.size + 1);
+                    System.out.println();
+                }
+                
+                for (int i = 0; i < target.size; i++) {
+                    int addr = target.startAddr + i;
+                    int instruction = soup[addr];
+                    String asm = Disassembler.disassemble(instruction);
+                    
+                    // Mark current IP if within bounds
+                    String ipMarker = (i == relativeIp) ? " <<< IP" : "";
+                    
+                    if (showRaw) {
+                        System.out.printf("   %3d [%6d]: 0x%08X  %-30s%s%n", 
+                                i, addr, instruction, asm, ipMarker);
+                    } else {
+                        System.out.printf("   %3d: %-30s%s%n", i, asm, ipMarker);
+                    }
+                }
+                System.out.println();
+                
+                // If IP is outside organism, show code at current IP location
+                if (!ipInBounds && absoluteIp >= 0 && absoluteIp < soup.length) {
+                    System.out.println("🎯 Code at current IP (outside organism):");
+                    int contextStart = Math.max(0, absoluteIp - 3);
+                    int contextEnd = Math.min(soup.length, absoluteIp + 5);
+                    
+                    for (int addr = contextStart; addr < contextEnd; addr++) {
+                        String marker = (addr == absoluteIp) ? " <<< IP" : "";
+                        System.out.printf("   [%6d]: 0x%08X  %-30s%s%n",
+                                addr, soup[addr], Disassembler.disassemble(soup[addr]), marker);
+                    }
+                    System.out.println();
+                }
+                
+                // Show context if requested
+                if (showContext) {
+                    System.out.println("🔍 Memory context around organism (±5 cells):");
+                    int contextStart = Math.max(0, target.startAddr - 5);
+                    int contextEnd = Math.min(soup.length, target.startAddr + target.size + 5);
+                    
+                    for (int addr = contextStart; addr < contextEnd; addr++) {
+                        String marker = "";
+                        if (addr == target.startAddr) marker = " <<< START";
+                        else if (addr == target.startAddr + target.size) marker = " <<< END";
+                        else if (addr == absoluteIp) marker = " <<< IP";
+                        
+                        String inOrg = (addr >= target.startAddr && addr < target.startAddr + target.size) 
+                                ? "│" : " ";
+                        
+                        System.out.printf("   %s %6d: 0x%08X  %-25s%s%n",
+                                inOrg, addr, soup[addr], Disassembler.disassemble(soup[addr]), marker);
+                    }
+                    System.out.println();
+                }
+                
+                System.out.println("═".repeat(60));
+                
+                return 0;
+                
+            } catch (Exception e) {
+                System.err.println("❌ Error: " + e.getMessage());
+                e.printStackTrace();
+                return 1;
             }
         }
     }
