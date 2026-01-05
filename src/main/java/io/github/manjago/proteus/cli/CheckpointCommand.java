@@ -1,6 +1,7 @@
 package io.github.manjago.proteus.cli;
 
 import io.github.manjago.proteus.core.Disassembler;
+import io.github.manjago.proteus.core.OpCode;
 import io.github.manjago.proteus.persistence.CheckpointStore;
 import io.github.manjago.proteus.persistence.CheckpointStore.CheckpointData;
 import io.github.manjago.proteus.persistence.CheckpointStore.OrganismData;
@@ -11,6 +12,7 @@ import picocli.CommandLine.Parameters;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /**
  * CLI command: checkpoint
@@ -51,6 +53,9 @@ public class CheckpointCommand implements Callable<Integer> {
         
         @Parameters(index = "0", description = "Checkpoint file (.mv)")
         private Path checkpointFile;
+        
+        @Option(names = {"-a", "--all"}, description = "Show all organisms (not just first 20)")
+        private boolean showAll;
         
         @Override
         public Integer call() {
@@ -107,21 +112,87 @@ public class CheckpointCommand implements Callable<Integer> {
                     nonZeroCells, 100.0 * nonZeroCells / data.soupSize());
                 System.out.println();
                 
-                // Organism details
+                // Analyze and display organisms
                 if (!data.organisms().isEmpty()) {
-                    System.out.println("🧬 Organisms:");
+                    int[] soup = data.soup();
+                    List<OrganismAnalysis> analyses = new ArrayList<>();
+                    
+                    // Analyze all organisms
                     for (OrganismData org : data.organisms()) {
-                        String nameDisplay = org.name != null ? org.name + "#" + org.id : "#" + org.id;
-                        System.out.printf("   %s @ [%d..%d) size=%d parent=#%d allocId=%d%n",
-                            nameDisplay, org.startAddr, org.startAddr + org.size, 
-                            org.size, org.parentId, org.allocId);
-                        System.out.printf("      IP=%d errors=%d age=%d%n",
-                            org.ip, org.errors, org.age);
-                        if (org.hasPending) {
-                            System.out.printf("      pending: [%d..%d) allocId=%d%n",
-                                org.pendingAddr, org.pendingAddr + org.pendingSize, org.pendingAllocId);
-                        }
+                        analyses.add(analyzeOrganism(org, soup, data.maxErrors()));
                     }
+                    
+                    // Statistics
+                    int reproductive = 0, zombies = 0, looping = 0, pending = 0, erroring = 0;
+                    int totalSize = 0;
+                    Map<String, Integer> lineageCounts = new HashMap<>();
+                    
+                    for (OrganismAnalysis a : analyses) {
+                        if (a.reproductive) reproductive++;
+                        if (a.zombie) zombies++;
+                        if (a.looping) looping++;
+                        if (a.pending) pending++;
+                        if (a.erroring) erroring++;
+                        totalSize += a.org.size;
+                        
+                        String lineage = a.org.name != null ? a.org.name.replace("-M", "") : "Unknown";
+                        lineageCounts.merge(lineage, 1, Integer::sum);
+                    }
+                    
+                    System.out.println("📊 Population Analysis:");
+                    System.out.printf("   [R] Reproductive:  %,d (%.1f%%) - can reproduce%n", 
+                            reproductive, 100.0 * reproductive / analyses.size());
+                    System.out.printf("   [Z] Zombies:       %,d (%.1f%%) - IP outside code%n", 
+                            zombies, 100.0 * zombies / analyses.size());
+                    System.out.printf("   [L] Looping:       %,d (%.1f%%) - has JMP back%n", 
+                            looping, 100.0 * looping / analyses.size());
+                    System.out.printf("   [P] Pending:       %,d (%.1f%%) - preparing spawn%n", 
+                            pending, 100.0 * pending / analyses.size());
+                    System.out.printf("   [E] Erroring:      %,d (%.1f%%) - >50%% errors%n", 
+                            erroring, 100.0 * erroring / analyses.size());
+                    System.out.printf("   Avg size:          %.1f instructions%n", 
+                            (double) totalSize / analyses.size());
+                    System.out.println();
+                    
+                    // Lineage distribution
+                    System.out.println("🌳 Lineage distribution:");
+                    lineageCounts.entrySet().stream()
+                            .sorted((a, b) -> b.getValue() - a.getValue())
+                            .limit(10)
+                            .forEach(e -> System.out.printf("   %s: %,d (%.1f%%)%n", 
+                                    e.getKey(), e.getValue(), 100.0 * e.getValue() / analyses.size()));
+                    System.out.println();
+                    
+                    // Display organisms
+                    System.out.println("🧬 Organisms:");
+                    int displayed = 0;
+                    int limit = showAll ? Integer.MAX_VALUE : 20;
+                    
+                    for (OrganismAnalysis a : analyses) {
+                        if (displayed >= limit) break;
+                        displayed++;
+                        
+                        OrganismData org = a.org;
+                        String nameDisplay = org.name != null ? org.name + "#" + org.id : "#" + org.id;
+                        String flags = a.getFlags();
+                        
+                        System.out.printf("   %s %s @ [%d..%d) size=%d age=%d%n",
+                            flags, nameDisplay, org.startAddr, org.startAddr + org.size, 
+                            org.size, org.age);
+                    }
+                    
+                    if (!showAll && analyses.size() > 20) {
+                        System.out.printf("   ... and %d more (use -a to show all)%n", analyses.size() - 20);
+                    }
+                    System.out.println();
+                    
+                    // Legend
+                    System.out.println("📖 Legend:");
+                    System.out.println("   [R] Reproductive - has ALLOCATE + COPY + SPAWN");
+                    System.out.println("   [Z] Zombie - IP outside organism code");
+                    System.out.println("   [L] Looping - has JMP with negative offset");
+                    System.out.println("   [P] Pending - has pending allocation (preparing spawn)");
+                    System.out.println("   [E] Erroring - errors > 50% of max");
                 }
                 
                 return 0;
@@ -131,6 +202,83 @@ public class CheckpointCommand implements Callable<Integer> {
                 e.printStackTrace();
                 return 1;
             }
+        }
+        
+        /**
+         * Analyze organism code to determine its characteristics.
+         */
+        private OrganismAnalysis analyzeOrganism(OrganismData org, int[] soup, int maxErrors) {
+            OrganismAnalysis a = new OrganismAnalysis();
+            a.org = org;
+            
+            // Check IP bounds
+            a.zombie = org.ip < 0 || org.ip >= org.size;
+            
+            // Check pending
+            a.pending = org.hasPending;
+            
+            // Check errors
+            a.erroring = org.errors > maxErrors / 2;
+            
+            // Analyze code
+            boolean hasAllocate = false, hasCopy = false, hasSpawn = false;
+            a.looping = false;
+            
+            for (int i = 0; i < org.size; i++) {
+                int addr = org.startAddr + i;
+                if (addr >= 0 && addr < soup.length) {
+                    int instruction = soup[addr];
+                    OpCode op = OpCode.decodeOpCode(instruction);
+                    
+                    if (op != null) {
+                        switch (op) {
+                            case ALLOCATE -> hasAllocate = true;
+                            case COPY -> hasCopy = true;
+                            case SPAWN -> hasSpawn = true;
+                            case JMP, JMPZ, JLT -> {
+                                int offset = OpCode.decodeOffset(instruction);
+                                if (offset < 0) {
+                                    a.looping = true;
+                                }
+                            }
+                            default -> {}
+                        }
+                    }
+                }
+            }
+            
+            a.reproductive = hasAllocate && hasCopy && hasSpawn;
+            a.hasAllocate = hasAllocate;
+            a.hasCopy = hasCopy;
+            a.hasSpawn = hasSpawn;
+            
+            return a;
+        }
+    }
+    
+    /**
+     * Analysis results for a single organism.
+     */
+    private static class OrganismAnalysis {
+        OrganismData org;
+        boolean reproductive;  // Has ALLOCATE + COPY + SPAWN
+        boolean zombie;        // IP outside code bounds
+        boolean looping;       // Has JMP with negative offset
+        boolean pending;       // Has pending allocation
+        boolean erroring;      // High error count
+        boolean hasAllocate;
+        boolean hasCopy;
+        boolean hasSpawn;
+        
+        String getFlags() {
+            StringBuilder sb = new StringBuilder("[");
+            sb.append(reproductive ? "R" : ".");
+            sb.append(zombie ? "Z" : ".");
+            sb.append(looping ? "L" : ".");
+            sb.append(pending ? "P" : ".");
+            sb.append(erroring ? "E" : ".");
+            sb.append("]");
+            return sb.toString();
         }
     }
     
