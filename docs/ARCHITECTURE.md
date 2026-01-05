@@ -88,7 +88,7 @@
 | `MutationTracker` | Отслеживание мутаций при COPY |
 | `Disassembler` | Преобразование машинного кода в мнемоники |
 | `GenomeBuilder` | Fluent API для ручного создания геномов |
-| `Adam` | Первый самовоспроизводящийся организм (14 инструкций, v3) |
+| `Adam` | Первый самовоспроизводящийся организм (12 инструкций, v4) |
 
 #### Application (приложение)
 
@@ -142,7 +142,7 @@
 | **JMP/JMPZ/JLT** | Абсолютные адреса в регистрах | IP-relative offset (18-bit signed) |
 | **LOAD/STORE** | Абсолютная адресация | startAddr-relative (своя память) |
 | **GETADDR** | — | Новая инструкция: получить свой startAddr |
-| **Adam** | 13 инструкций, абсолютные JMP | 14 инструкций, position-independent |
+| **Adam** | 13 инструкций, абсолютные JMP | 12 инструкций, position-independent (v4) |
 
 ### Преимущества PIC
 
@@ -394,44 +394,53 @@ public Simulator(SimulatorConfig config) {
 
 Adam — минимальный самовоспроизводящийся организм. Это "предок", от которого эволюционируют все остальные.
 
-### Геном v3 (14 инструкций, Position-Independent)
+### Геном v4 (12 инструкций, Position-Independent)
+
+**Оптимизация v4:** Использует сравнение адресов вместо счётчика. Экономит 2 инструкции (14 → 12, -14%).
 
 ```asm
 ; Инициализация
-0000: MOVI R4, 14       ; R4 = SIZE
-0001: GETADDR R7        ; R7 = мой абсолютный адрес
+0000: GETADDR R7        ; R7 = мой абсолютный адрес
+0001: MOVI R4, 12       ; R4 = SIZE
 
 ; Выделение памяти
 0002: ALLOCATE R4, R3   ; R3 = адрес для потомка
 
-; Подготовка указателей
+; Подготовка указателей и вычисление end address
 0003: MOV R5, R7        ; R5 = src pointer (мой старт)
 0004: MOV R6, R3        ; R6 = dst pointer (старт потомка)
-0005: MOVI R0, 0        ; R0 = counter
+0005: ADD R7, R4        ; R7 = end_addr = my_addr + SIZE
 
 ; Цикл копирования (адрес 6)
 0006: COPY [R5], [R6]   ; Копировать с мутацией!
 0007: INC R5            ; src++
 0008: INC R6            ; dst++
-0009: INC R0            ; counter++
-000A: JLT R0, R4, -5   ; if counter < SIZE, goto 6
+0009: JLT R5, R7, -4    ; if src < end, goto 6
 
 ; Порождение и повтор
-000B: SPAWN R3, R4      ; Зарегистрировать потомка
-000C: MOVI R0, 0        ; Reset counter
-000D: JMP -12           ; goto 2 (ALLOCATE)
+000A: SPAWN R3, R4      ; Зарегистрировать потомка
+000B: JMP -12           ; goto 0 (start)
 ```
 
-### Регистры (v3)
+### Регистры (v4)
 
 | Регистр | Назначение |
 |---------|------------|
-| R0 | Counter (0 to size-1) |
-| R3 | Адрес потомка (от ALLOCATE) |
-| R4 | Размер генома (14) |
+| R3 | Адрес потомка (от ALLOCATE, не меняется в цикле) |
+| R4 | Размер генома (12) |
 | R5 | Source pointer (абсолютный, инкрементируется) |
 | R6 | Destination pointer (абсолютный, инкрементируется) |
-| R7 | Мой startAddr (от GETADDR) |
+| R7 | my_addr → end_addr → my_addr (переиспользуется) |
+
+### Ключевое отличие v3 → v4
+
+| v3 (14 инструкций) | v4 (12 инструкций) |
+|--------------------|-------------------|
+| `MOVI R0, 0` перед циклом | Не нужен R0 |
+| `INC R0` в цикле | Нет инкремента счётчика |
+| `JLT R0, R4, loop` | `JLT R5, R7, loop` |
+| `MOVI R0, 0` после spawn | Не нужен |
+| R7 = my_addr (константа) | R7 = end_addr (loop bound) |
 
 ---
 
@@ -744,7 +753,7 @@ java -jar proteus.jar info
 
 - [x] ISA v1.1 → v1.2 (Position-Independent Code)
 - [x] VirtualCPU с мутациями
-- [x] Adam v3 (14 инструкций, PIC)
+- [x] Adam v4 (12 инструкций, PIC, оптимизирован)
 - [x] MemoryManager (Free List + First Fit + Coalesce)
 - [x] Reaper (Age-Based + Lazy Deletion)
 - [x] Simulator + CLI (picocli)

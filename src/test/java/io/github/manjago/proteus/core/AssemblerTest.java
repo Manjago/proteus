@@ -198,48 +198,48 @@ class AssemblerTest {
     }
     
     @Test
-    @DisplayName("Assemble Adam v3")
-    void testAdamV3() throws Exception {
-        // Full Adam v3 genome
+    @DisplayName("Assemble Adam v4 (optimized)")
+    void testAdamV4() throws Exception {
+        // Full Adam v4 genome - optimized with address comparison
         int[] code = assembler.assemble("""
-            ; Adam v3 - self-replicating organism
+            ; Adam v4 - self-replicating organism (optimized)
             ; Position-independent code for ISA v1.2
+            ; Uses address comparison instead of counter (saves 2 instructions)
             
             start:
                 GETADDR R7        ; R7 = my start address
-                MOVI R4, 14       ; R4 = genome size
+                MOVI R4, 12       ; R4 = genome size (12 instructions!)
                 ALLOCATE R4, R3   ; R3 = child address
             
-            ; Initialize pointers
+            ; Initialize pointers and calculate end address
                 MOV R5, R7        ; R5 = src pointer
                 MOV R6, R3        ; R6 = dst pointer
-                MOVI R0, 0        ; R0 = counter
+                ADD R7, R4        ; R7 = end address = my_addr + SIZE
             
             ; Copy loop
             loop:
                 COPY R5, R6       ; Copy with mutation!
                 INC R5
                 INC R6
-                INC R0
-                JLT R0, R4, loop ; if R0 < R4 goto loop
+                JLT R5, R7, loop  ; if src < end goto loop
             
             ; Spawn and repeat
                 SPAWN R3, R4
-                MOVI R0, 0        ; Reset counter
                 JMP start         ; Endless loop
             """);
         
-        assertEquals(14, code.length, "Adam v3 should be 14 instructions");
+        assertEquals(12, code.length, "Adam v4 should be 12 instructions");
         
         // Verify key instructions
         assertEquals(OpCode.GETADDR, OpCode.decodeOpCode(code[0]));
         assertEquals(OpCode.MOVI, OpCode.decodeOpCode(code[1]));
-        assertEquals(14, OpCode.decodeImmediate(code[1]));
+        assertEquals(12, OpCode.decodeImmediate(code[1]));
         assertEquals(OpCode.ALLOCATE, OpCode.decodeOpCode(code[2]));
+        assertEquals(OpCode.ADD, OpCode.decodeOpCode(code[5]));  // R7 = end_addr
         assertEquals(OpCode.COPY, OpCode.decodeOpCode(code[6]));
-        assertEquals(OpCode.JLT, OpCode.decodeOpCode(code[10]));
-        assertEquals(OpCode.SPAWN, OpCode.decodeOpCode(code[11]));
-        assertEquals(OpCode.JMP, OpCode.decodeOpCode(code[13]));
+        assertEquals(OpCode.JLT, OpCode.decodeOpCode(code[9]));
+        assertEquals(OpCode.SPAWN, OpCode.decodeOpCode(code[10]));
+        assertEquals(OpCode.JMP, OpCode.decodeOpCode(code[11]));
     }
     
     @Test

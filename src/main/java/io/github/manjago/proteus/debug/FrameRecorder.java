@@ -124,7 +124,7 @@ public class FrameRecorder {
         List<Integer> regionData = new ArrayList<>();
         
         for (int i = 0; i < soupSize; i++) {
-            int value = soup.get(i);
+            int value = soup[i];
             
             if (value != 0) {
                 if (regionStart == -1) {

@@ -1,49 +1,50 @@
 ; =============================================================================
-; Adam v3 - The First Self-Replicating Organism
+; Adam v4 - The First Self-Replicating Organism (OPTIMIZED)
 ; =============================================================================
 ; 
 ; This is the "ancestor" from which all life evolves.
-; 14 instructions, position-independent code (ISA v1.2).
+; 12 instructions, position-independent code (ISA v1.2).
+;
+; OPTIMIZATION: Address comparison instead of counter.
+; - Saves 2 instructions vs v3 (14 -> 12, 14% smaller)
+; - No need for R0 counter or MOVI R0,0 instructions
 ;
 ; Strategy:
-;   1. Get my address
+;   1. Get my address and calculate end address
 ;   2. Allocate space for child
 ;   3. Copy my genome to child (with possible mutations)
 ;   4. Spawn child as independent organism
 ;   5. Repeat forever
 ;
 ; Registers:
-;   R0 - Loop counter (0 to SIZE-1)
-;   R3 - Child address (from ALLOCATE)
-;   R4 - Genome size (14)
-;   R5 - Source pointer (absolute, incrementing)
-;   R6 - Destination pointer (absolute, incrementing)
-;   R7 - My start address (from GETADDR)
+;   R3 - Child start address (from ALLOCATE, preserved for SPAWN)
+;   R4 - Genome size (12)
+;   R5 - Source pointer (incrementing)
+;   R6 - Destination pointer (incrementing)
+;   R7 - End address (my_addr + SIZE, used as loop bound)
 ;
 ; =============================================================================
 
 start:
     GETADDR R7          ; R7 = my start address
-    MOVI R4, 14         ; R4 = genome size (this organism is 14 instructions)
+    MOVI R4, 12         ; R4 = genome size (this organism is 12 instructions!)
     ALLOCATE R4, R3     ; Request memory, R3 = child address (or -1 if failed)
 
-; Initialize copy pointers
+; Initialize copy pointers and calculate end address
     MOV R5, R7          ; R5 = source pointer (start of my genome)
     MOV R6, R3          ; R6 = destination pointer (start of child)
-    MOVI R0, 0          ; R0 = counter = 0
+    ADD R7, R4          ; R7 = end address = my_addr + SIZE (overwrite R7!)
 
 ; Copy loop - this is where MUTATION can happen!
 loop:
     COPY R5, R6         ; memory[R6] = memory[R5] (may mutate!)
     INC R5              ; src++
     INC R6              ; dst++
-    INC R0              ; counter++
-    JLT R0, R4, loop   ; if counter < SIZE, continue loop
+    JLT R5, R7, loop    ; if src < end, continue loop (-4 offset)
 
 ; Spawn child and restart
     SPAWN R3, R4        ; Register child as new organism
-    MOVI R0, 0          ; Reset counter for next iteration
-    JMP start           ; Go back and make another child
+    JMP start           ; Go back and make another child (-12 offset)
 
 ; =============================================================================
 ; Notes:
@@ -51,4 +52,6 @@ loop:
 ; - If ALLOCATE fails (returns -1), COPY writes to invalid address -> errors
 ; - If SPAWN fails, child memory remains allocated but unused
 ; - Organism runs forever until killed by reaper (age/errors)
+; - R7 is rewritten each iteration: my_addr -> end_addr -> my_addr (by GETADDR)
+; - R3 is preserved through the copy loop (not incremented!)
 ; =============================================================================
