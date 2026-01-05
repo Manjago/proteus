@@ -233,7 +233,8 @@ proteus info
 
 | JDK версия | Рекомендуемый GC | Опции |
 |------------|------------------|-------|
-| JDK 21+ | ZGC Generational | `-XX:+UseZGC -XX:+ZGenerational` |
+| JDK 24+ | ZGC (generational по умолчанию) | `-XX:+UseZGC` |
+| JDK 21-23 | ZGC Generational | `-XX:+UseZGC -XX:+ZGenerational` |
 | JDK 17-20 | ZGC | `-XX:+UseZGC` |
 | JDK 11-16 | G1GC | `-XX:+UseG1GC -XX:MaxGCPauseMillis=200` |
 
@@ -243,12 +244,12 @@ proteus info
 # Короткая симуляция (до 1M циклов)
 java -Xmx1g -jar proteus.jar run ...
 
-# Средняя симуляция (1-10M циклов)
-java -Xmx2g -XX:+UseZGC -XX:+ZGenerational -jar proteus.jar run ...
+# Средняя симуляция (1-10M циклов) — JDK 24+
+java -Xmx2g -XX:+UseZGC -jar proteus.jar run ...
 
 # Долгая симуляция (неделя+)
 java -Xmx4g \
-    -XX:+UseZGC -XX:+ZGenerational \
+    -XX:+UseZGC \
     -Xlog:gc*:file=gc.log:time:filecount=3,filesize=10m \
     -jar proteus.jar run \
     --checkpoint-interval 100000 \

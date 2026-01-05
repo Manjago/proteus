@@ -155,8 +155,8 @@ java -Xmx512m -jar proteus-*.jar run \
     --debug initial_state.txt
 
 # Шаг 4: Запускаем "настоящую" симуляцию!
-# Для JDK 21+: ZGC Generational (минимальные паузы)
-java -Xmx2g -XX:+UseZGC -XX:+ZGenerational -jar proteus-*.jar run \
+# Для JDK 24+: ZGC уже generational по умолчанию
+java -Xmx2g -XX:+UseZGC -jar proteus-*.jar run \
     --resume experiment.mv \
     --cycles 1000000 \
     --max-organisms 5000 \
@@ -184,8 +184,10 @@ java -jar proteus-*.jar run \
 Для долгих симуляций (дни/недели) важны правильные настройки JVM:
 
 ```bash
-# JDK 21+ (рекомендуется): ZGC Generational
-# Минимальные паузы GC, хороший throughput
+# JDK 24+ (рекомендуется): ZGC уже generational по умолчанию
+java -Xmx4g -XX:+UseZGC -jar proteus-*.jar run ...
+
+# JDK 21-23: ZGC Generational (нужен флаг)
 java -Xmx4g -XX:+UseZGC -XX:+ZGenerational -jar proteus-*.jar run ...
 
 # JDK 17-20: обычный ZGC
@@ -196,7 +198,7 @@ java -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar proteus-*.jar run ...
 
 # Для экстремально долгих симуляций (неделя+):
 java -Xmx8g \
-    -XX:+UseZGC -XX:+ZGenerational \
+    -XX:+UseZGC \
     -XX:SoftMaxHeapSize=6g \
     -Xlog:gc*:file=gc.log:time,uptime:filecount=5,filesize=10m \
     -jar proteus-*.jar run \

@@ -356,9 +356,17 @@ public final class VirtualCPU {
         int templateAddr = state.getRegister(r2);
         int templateLen = state.getRegister(r3);
         
+        // Validate template length - prevent OOM from corrupted registers
+        // Max reasonable template is ~1000 instructions (typical organism is 15-100)
+        final int MAX_TEMPLATE_LEN = 1000;
+        if (templateLen <= 0 || templateLen > MAX_TEMPLATE_LEN) {
+            state.setRegister(r4, -1);
+            state.advanceIp();
+            return ExecutionResult.OK;
+        }
+        
         // Validate template bounds
-        if (templateAddr < 0 || templateLen <= 0 ||
-            templateAddr + templateLen > memory.length()) {
+        if (templateAddr < 0 || templateAddr + templateLen > memory.length()) {
             state.setRegister(r4, -1);
             state.advanceIp();
             return ExecutionResult.OK;
