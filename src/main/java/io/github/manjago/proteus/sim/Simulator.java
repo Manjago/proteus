@@ -708,6 +708,19 @@ public class Simulator {
                 // Clear pending
                 parentState.clearPendingAllocation();
                 
+                // CRITICAL ASSERTION: Verify that memory ownership matches expected allocId
+                // This catches bugs where memory was freed/reallocated unexpectedly
+                if (memoryManager instanceof BitmapMemoryManager bmm) {
+                    int actualOwner = bmm.getOwnerAt(address);
+                    if (actualOwner != childAllocId) {
+                        log.error("OWNERSHIP MISMATCH at spawn! addr={}, expected allocId={}, actual owner={}",
+                                address, childAllocId, actualOwner);
+                        // Don't create organism with wrong ownership - this would cause problems later
+                        rejectedSpawns++;
+                        return false;
+                    }
+                }
+                
                 // Create child organism with allocId for safe memory tracking
                 Organism child = new Organism(
                     totalOrganismsCreated,

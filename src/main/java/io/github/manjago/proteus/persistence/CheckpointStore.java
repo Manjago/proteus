@@ -212,10 +212,21 @@ public class CheckpointStore {
         
         // Restore memory manager state with exact allocIds
         if (sim.getMemoryManager() instanceof BitmapMemoryManager bmm) {
-            // Mark used regions with original allocIds
+            // Mark used regions with original allocIds - organisms
             for (OrganismData od : data.organisms()) {
                 bmm.markUsedWithAllocId(od.startAddr, od.size, od.allocId);
             }
+            
+            // CRITICAL: Mark pending allocations as used too!
+            // Without this, pending memory is considered free and can be reallocated
+            for (OrganismData od : data.organisms()) {
+                if (od.hasPending && od.pendingAllocId >= 0) {
+                    bmm.markUsedWithAllocId(od.pendingAddr, od.pendingSize, od.pendingAllocId);
+                    log.debug("Restored pending allocation [{},{}) allocId={} for org #{}",
+                            od.pendingAddr, od.pendingAddr + od.pendingSize, od.pendingAllocId, od.id);
+                }
+            }
+            
             // Restore next allocation ID counter
             bmm.setNextAllocationId(data.nextAllocId());
         } else {
