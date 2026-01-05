@@ -482,4 +482,19 @@ public class BitmapMemoryManager implements MemoryManager {
     public String toString() {
         return getStatsString();
     }
+    
+    /**
+     * Get owner (allocId) at specific address.
+     * Used for diagnostics.
+     * 
+     * @param addr address to check
+     * @return allocId, 0 (FREE) if unowned
+     */
+    @Override
+    public int getOwnerAt(int addr) {
+        if (addr < 0 || addr >= totalSize) {
+            return -1;
+        }
+        return ownership[addr];
+    }
 }

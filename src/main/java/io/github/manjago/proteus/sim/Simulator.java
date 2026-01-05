@@ -303,6 +303,12 @@ public class Simulator {
                         reaper.cleanup();
                     }
                     
+                    // DIAGNOSTIC: Check for organism overlaps periodically
+                    int overlaps = checkForOverlaps();
+                    if (overlaps > 0) {
+                        log.error("OVERLAP DETECTED at cycle {}: {} overlapping organisms!", totalCycles, overlaps);
+                    }
+                    
                     // Memory pressure check - trigger GC if heap is getting full
                     long usedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
                     long maxMem = Runtime.getRuntime().maxMemory();
@@ -661,6 +667,44 @@ public class Simulator {
                 // Save allocId before clearing - ownership transfers to child
                 int childAllocId = pendingAllocId;
                 
+                // DIAGNOSTIC: Check for overlap BEFORE creating child
+                for (Organism existing : aliveOrganisms) {
+                    // Skip dead organisms (they will be cleaned up)
+                    if (!existing.isAlive()) {
+                        continue;
+                    }
+                    
+                    int existStart = existing.getStartAddr();
+                    int existEnd = existStart + existing.getSize();
+                    int newEnd = address + actualSize;
+                    
+                    // Check if ranges overlap
+                    if (address < existEnd && newEnd > existStart) {
+                        log.error("OVERLAP BUG DETECTED at spawn! " +
+                                "New child would be at [{},{}) allocId={} " +
+                                "but ALIVE Org#{} already occupies [{},{}) allocId={}! " +
+                                "Cycle={}, parent={}, existingBirth={}, existingAge={}",
+                                address, newEnd, childAllocId,
+                                existing.getId(), existStart, existEnd, existing.getAllocId(),
+                                totalCycles, parentId, existing.getBirthCycle(), existing.getAge());
+                        
+                        // Also check memory ownership
+                        log.error("Memory ownership at addr {}: {}", 
+                                address, memoryManager.getOwnerAt(address));
+                        
+                        // Don't create overlapping organism - reject spawn
+                        rejectedSpawns++;
+                        // Free the pending allocation
+                        if (childAllocId >= 0) {
+                            memoryManager.freeByAllocId(address, actualSize, childAllocId);
+                        } else {
+                            memoryManager.free(address, actualSize);
+                        }
+                        parentState.clearPendingAllocation();
+                        return false;
+                    }
+                }
+                
                 // Clear pending
                 parentState.clearPendingAllocation();
                 
@@ -673,6 +717,16 @@ public class Simulator {
                     totalCycles,
                     childAllocId
                 );
+                
+                // Inherit name from parent (with -M suffix for mutant lineage)
+                if (parent != null && parent.getName() != null) {
+                    String parentName = parent.getName();
+                    // Don't keep adding -M suffixes, just use parent's base name
+                    String baseName = parentName.endsWith("-M") ? 
+                            parentName.substring(0, parentName.length() - 2) : parentName;
+                    child.setName(baseName + "-M");
+                }
+                
                 totalOrganismsCreated++;
                 aliveOrganisms.add(child);
                 reaper.register(child);
@@ -726,6 +780,32 @@ public class Simulator {
     
     public long getTotalCycles() { return totalCycles; }
     public int getTotalSpawns() { return totalSpawns; }
+    
+    /**
+     * Check for overlapping organisms (diagnostic).
+     * @return number of overlaps found
+     */
+    private int checkForOverlaps() {
+        int overlaps = 0;
+        List<Organism> sorted = new ArrayList<>(aliveOrganisms);
+        sorted.removeIf(o -> !o.isAlive());  // Only check alive ones
+        sorted.sort((a, b) -> Integer.compare(a.getStartAddr(), b.getStartAddr()));
+        
+        for (int i = 0; i < sorted.size() - 1; i++) {
+            Organism curr = sorted.get(i);
+            Organism next = sorted.get(i + 1);
+            int currEnd = curr.getStartAddr() + curr.getSize();
+            if (currEnd > next.getStartAddr()) {
+                overlaps++;
+                if (overlaps <= 3) {
+                    log.error("OVERLAP: Org#{} [{},{}) allocId={} vs Org#{} [{},{}) allocId={}",
+                            curr.getId(), curr.getStartAddr(), currEnd, curr.getAllocId(),
+                            next.getId(), next.getStartAddr(), next.getStartAddr() + next.getSize(), next.getAllocId());
+                }
+            }
+        }
+        return overlaps;
+    }
     public int getDeathsByErrors() { return deathsByErrors; }
     public int getFailedAllocations() { return failedAllocations; }
     public List<Organism> getAliveOrganisms() { return new ArrayList<>(aliveOrganisms); }

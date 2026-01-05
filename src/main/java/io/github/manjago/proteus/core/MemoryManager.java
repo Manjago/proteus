@@ -135,4 +135,26 @@ public interface MemoryManager {
         // Default: not supported, subclasses should override
         return -1;
     }
+    
+    /**
+     * Get owner (allocId) at specific address (for diagnostics).
+     * 
+     * @param addr address to check
+     * @return allocId, 0 for free, -1 if not available
+     */
+    default int getOwnerAt(int addr) {
+        return -1;  // Not available by default
+    }
+    
+    /**
+     * Check if memory range has consistent ownership (single owner or all free).
+     * Used to detect when organism wrote over someone else's memory.
+     * 
+     * @param addr start address
+     * @param size block size
+     * @return true if consistent, false if mixed ownership
+     */
+    default boolean hasConsistentOwnership(int addr, int size) {
+        return true;  // Assume consistent by default
+    }
 }
