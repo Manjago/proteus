@@ -645,6 +645,16 @@ public class Simulator {
                     if (killed > 0) {
                         aliveOrganisms.removeIf(o -> !o.isAlive());
                         aliveCount = aliveOrganisms.size();
+                        
+                        // CRITICAL: Check if parent's pending was freed by reaper!
+                        // Reaper might have killed the PARENT organism (oldest one).
+                        // If so, pending allocation was already freed.
+                        if (!parentState.hasPendingAllocation() || 
+                            parentState.getPendingAllocAddr() != pendingAddr) {
+                            log.debug("Spawn aborted: parent was reaped during spawn, pending freed");
+                            rejectedSpawns++;
+                            return false;  // Pending was already freed by reap()
+                        }
                     }
                     if (aliveCount >= config.maxOrganisms()) {
                         rejectedSpawns++;
